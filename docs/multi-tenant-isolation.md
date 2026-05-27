@@ -59,7 +59,7 @@ memory via these methods — they inherit the isolation automatically.
 
 ## Tested
 
-`core-engine/tests/test_memory_tenant_isolation.py` is the security-critical
+`tests/test_memory_tenant_isolation.py` is the security-critical
 regression suite. 44 tests covering:
 - `tenant_id` validation (15 parametrized cases: empty/whitespace/newlines/
   path-traversal/control-chars/oversized + 8 valid patterns + sentinel

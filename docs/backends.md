@@ -49,7 +49,7 @@ MODELMELD_ROUTING_POLICY=always_cloud   # or scout_driven
 | **Streaming** | ✅ SSE (with event-stream translation) |
 | **Tool calling** | ✅ schema-mapped to OpenAI tool-call format |
 | **Multi-modal** | ✅ images via Anthropic's content-block format |
-| **Notes** | The OpenAI ⇄ Anthropic translation layer is the most complex adapter in the codebase. Property-based tests in `core-engine/tests/test_translation_openai_anthropic.py`. Honors retry-with-backoff on 429/529/5xx. |
+| **Notes** | The OpenAI ⇄ Anthropic translation layer is the most complex adapter in the codebase. Property-based tests in `tests/test_translation_openai_anthropic.py`. Honors retry-with-backoff on 429/529/5xx. |
 
 ```bash
 MODELMELD_CLOUD_PROVIDER=anthropic
@@ -144,7 +144,7 @@ and the vLLM project directly. See <https://github.com/vllm-project/vllm>.
 | **Wire format** | OpenAI Chat Completions (via Triton's OpenAI-compatible endpoint) |
 | **Auth** | none required at the engine; gateway sends `api_key="EMPTY"` |
 | **Streaming** | ✅ SSE |
-| **Notes** | For NVIDIA-optimized self-hosted inference. This adapter ships in core-engine; tested against a Triton-served TRT-LLM compiled model. |
+| **Notes** | For NVIDIA-optimized self-hosted inference. This adapter ships in `modelmeld`; tested against a Triton-served TRT-LLM compiled model. |
 
 ```bash
 MODELMELD_LOCAL_PROVIDER=tensorrt_llm

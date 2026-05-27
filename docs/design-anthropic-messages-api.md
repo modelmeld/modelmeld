@@ -77,7 +77,7 @@ The price of double translation on the Anthropic-in → Anthropic-out path is ~m
 ## File layout
 
 ```
-core-engine/src/modelmeld/
+src/modelmeld/
   api/
     routes/
       messages.py                    NEW  — Anthropic /v1/messages route
@@ -89,7 +89,7 @@ core-engine/src/modelmeld/
     openai_anthropic.py              MODIFIED — add reverse-direction functions
     __init__.py                      MODIFIED — re-export new functions
 
-core-engine/tests/
+tests/
   test_translation_anthropic_to_openai.py   NEW  — translation unit tests
   test_route_messages.py                    NEW  — route-level integration tests
   test_route_messages_streaming.py          NEW  — streaming SSE format tests
@@ -222,7 +222,7 @@ There's existing precedent: the AnthropicAdapter's `AnthropicStreamTranslator` d
 ## Route implementation sketch
 
 ```python
-# core-engine/src/modelmeld/api/routes/messages.py
+# src/modelmeld/api/routes/messages.py
 
 @router.post("/messages", response_model=None)
 async def anthropic_messages(

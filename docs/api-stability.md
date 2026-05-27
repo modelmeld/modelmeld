@@ -124,7 +124,7 @@ These are **internal** and may change without notice:
 - Logger names, log message strings, log levels for non-failure events.
 - Hook event payload schemas during pre-1.0. We try to keep these
   stable, but if we need to add a field or restructure, we will.
-- Internal test fixtures (`core-engine/tests/conftest.py` etc.)
+- Internal test fixtures (`tests/conftest.py` etc.)
 - Database schema for the optional Postgres-backed memory store (when
   it lands).
 

@@ -67,9 +67,9 @@ Then point Cursor at `http://localhost:8000/v1`.
 ## Verify the routing
 
 Cursor doesn't surface response headers in its UI. To see what model
-actually served your request, check the ModelMeld dashboard at
-`https://modelmeld.ai/dashboard` (when shipped) or your account-level
-audit log via the `/v1/account/usage` endpoint (admin access).
+actually served your request, check the ModelMeld dashboard when it ships,
+or your account-level audit log via the `/v1/account/usage` endpoint
+(admin access).
 
 ## Common gotchas
 

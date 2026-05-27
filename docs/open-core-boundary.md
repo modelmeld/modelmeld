@@ -13,8 +13,8 @@ model registry was split off the package into a separate subscription feed.
 
 | Tier | Path | License | Distribution |
 |---|---|---|---|
-| `modelmeld` (code) | `core-engine/src/modelmeld/` | AGPL-3.0-or-later | Public OSS |
-| Bundled seed data | `core-engine/src/modelmeld/scout/data/` | CC-BY-4.0 (see `LICENSE.md` in that dir) | Public OSS, stale by design |
+| `modelmeld` (code) | `src/modelmeld/` | AGPL-3.0-or-later | Public OSS |
+| Bundled seed data | `src/modelmeld/scout/data/` | CC-BY-4.0 (see `LICENSE.md` in that dir) | Public OSS, stale by design |
 | Live curated registry feed | `feed.modelmeld.ai` | Subscription terms (separate agreement) | Paid, signed JSON, daily refresh |
 | `modelmeld-enterprise` | `enterprise-control/` | Proprietary | Always private |
 
@@ -32,7 +32,7 @@ key issued from an active subscription.
 This split is intentional: code is permissively licensed to maximize adoption;
 the curated registry is a subscription product so a fork can use the code
 freely but doesn't automatically get the live data. See
-`core-engine/NOTICE` and `core-engine/src/modelmeld/scout/data/LICENSE.md`
+`NOTICE` and `src/modelmeld/scout/data/LICENSE.md`
 for the legal details.
 
 ---
@@ -43,7 +43,7 @@ for the legal details.
 
 The reverse direction — `modelmeld_enterprise` importing from `modelmeld` — is the entire point. Enterprise wraps and extends core. Core never reaches back.
 
-Enforcement: `scripts/verify_boundary.py` walks the AST of every `.py` file under `core-engine/src/modelmeld/` and fails CI with exit code 1 if any `import modelmeld_enterprise` or `from modelmeld_enterprise...` is found. The script runs on every PR and on `main`.
+Enforcement: `scripts/verify_boundary.py` walks the AST of every `.py` file under `src/modelmeld/` and fails CI with exit code 1 if any `import modelmeld_enterprise` or `from modelmeld_enterprise...` is found. The script runs on every PR and on `main`.
 
 ---
 
@@ -65,7 +65,7 @@ This is the normal direction. Enterprise depends on core; core defines the exten
 ### Allowed: `modelmeld` imports third-party OSS libraries
 
 ```python
-# core-engine/src/modelmeld/api/server.py
+# src/modelmeld/api/server.py
 from fastapi import FastAPI  # ✓ allowed (MIT)
 import httpx                  # ✓ allowed (BSD)
 from pydantic import BaseModel  # ✓ allowed (MIT)
@@ -79,7 +79,7 @@ free of AGPL contamination to be distributable as a proprietary control plane.
 ### Forbidden: `modelmeld` imports `modelmeld_enterprise`
 
 ```python
-# core-engine/src/modelmeld/api/server.py
+# src/modelmeld/api/server.py
 from modelmeld_enterprise.audit import log  # ✗ FORBIDDEN
 import modelmeld_enterprise.telemetry        # ✗ FORBIDDEN
 from modelmeld_enterprise.auth.rbac import check  # ✗ FORBIDDEN
@@ -109,14 +109,14 @@ These don't trigger the linter but violate the boundary contract — they will b
 2. **OSS adoption flywheel.** Individual developers must be able to `pip install modelmeld` and use it standalone with zero exposure to enterprise infrastructure (no Postgres, no audit log, no RBAC, no SSO). If they can't, they don't adopt, and the open-core strategy fails.
 3. **Acquisition / diligence cleanliness.** Acquirers will run static analysis on the public OSS package. If they find proprietary symbols or shimmed dependencies, the diligence question becomes "what else is mixed in here?" Clean boundary = clean answer.
 4. **Operational simplicity.** When core changes, enterprise must adapt. When enterprise changes, core is untouched. One-way dependencies make this predictable.
-5. **Moat protection via the data feed, not the code.** The AGPL-3.0 license on the code maximizes adoption for individuals + dev tools (calling the gateway over HTTP from unmodified clients doesn't trigger copyleft), while deterring hyperscaler forks that would otherwise relaunch us as a closed managed service. The actual moat — the continuously-curated model registry — lives in the subscription feed, not in the package. A fork has the code but stale data; getting to parity requires rebuilding the curation operation, which is ongoing IP (editorial weighting, benchmark-gaming flags, model deprecation tracking) rather than a one-time engineering effort. See `core-engine/NOTICE` for the explicit code-vs-data licensing terms.
+5. **Moat protection via the data feed, not the code.** The AGPL-3.0 license on the code maximizes adoption for individuals + dev tools (calling the gateway over HTTP from unmodified clients doesn't trigger copyleft), while deterring hyperscaler forks that would otherwise relaunch us as a closed managed service. The actual moat — the continuously-curated model registry — lives in the subscription feed, not in the package. A fork has the code but stale data; getting to parity requires rebuilding the curation operation, which is ongoing IP (editorial weighting, benchmark-gaming flags, model deprecation tracking) rather than a one-time engineering effort. See `NOTICE` for the explicit code-vs-data licensing terms.
 
 ---
 
 ## How to run the linter locally
 
 ```bash
-# Lint the real core-engine tree (default)
+# Lint the real modelmeld tree (default)
 python scripts/verify_boundary.py
 
 # Lint a specific path
