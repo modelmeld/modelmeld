@@ -1,0 +1,147 @@
+# Release workflow — fired by `vX.Y.Z` tag push.
+#
+# Builds wheel + sdist, signs them with Sigstore, generates a CycloneDX
+# SBOM, publishes to PyPI via Trusted Publishing (no long-lived API
+# tokens), and uploads everything as a GitHub Release.
+#
+# Trigger is tag-only (not branch push), so release-please's PR merge
+# triggers nothing — only the tag-push from release-please's tagging
+# step does. This means a manual `git tag vX.Y.Z && git push --tags`
+# also works.
+#
+# Action pins are commit SHAs per SECURITY.md supply-chain stance:
+# a compromised tag pointer on a third-party action can't redirect us.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write       # for creating the GitHub Release
+  id-token: write       # for PyPI Trusted Publishing + Sigstore signing
+  attestations: write   # for SLSA provenance attestation
+
+jobs:
+  build:
+    name: Build wheel + sdist
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # Tag is "vX.Y.Z" — strip the "v" prefix
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Building modelmeld ${VERSION}"
+
+      - name: Install build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install build==1.2.2
+
+      - name: Build wheel + sdist
+        run: python -m build --wheel --sdist
+
+      - name: Upload build artifacts for later jobs
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: modelmeld-dist
+          path: dist/
+          retention-days: 7
+
+  sbom:
+    name: CycloneDX SBOM
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install cyclonedx-py
+        run: |
+          python -m pip install --upgrade pip
+          pip install cyclonedx-bom==4.6.1
+
+      - name: Install package + deps for SBOM scan
+        run: pip install .
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          cyclonedx-py environment \
+            --output-format json \
+            --output-file modelmeld-${{ needs.build.outputs.version }}-sbom.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: sbom
+          path: modelmeld-${{ needs.build.outputs.version }}-sbom.json
+          retention-days: 365
+
+  sign-and-publish:
+    name: Sign + publish to PyPI
+    needs: [build, sbom]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/modelmeld
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4.1.8
+        with:
+          name: modelmeld-dist
+          path: dist/
+
+      - name: Download SBOM
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4.1.8
+        with:
+          name: sbom
+          path: dist/
+
+      - name: Sign artifacts with Sigstore
+        uses: sigstore/gh-action-sigstore-python@f7ad0af51a5648d09a20d00370f0a91c3bdf8f84  # v3.0.0
+        with:
+          inputs: |
+            ./dist/*.whl
+            ./dist/*.tar.gz
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70  # v1.12.3
+        with:
+          # No api-token needed — uses OIDC token issued by GitHub to
+          # the PyPI Trusted Publisher configured for this project.
+          # Exclude SBOM + signatures from the PyPI upload (they're for
+          # the GitHub Release only); the wheel + sdist go to PyPI.
+          packages-dir: dist/
+          skip-existing: true
+
+      - name: Create GitHub Release with signed artifacts + SBOM
+        uses: softprops/action-gh-release@01570a1f39cb168c169c802c3bceb9e93fb10974  # v2.1.0
+        with:
+          name: "modelmeld v${{ needs.build.outputs.version }}"
+          generate_release_notes: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/*.sigstore
+            dist/*.sigstore.json
+            dist/modelmeld-${{ needs.build.outputs.version }}-sbom.json
+          fail_on_unmatched_files: false   # signatures land in dist/ via Sigstore action

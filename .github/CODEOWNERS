@@ -1,0 +1,48 @@
+# CODEOWNERS — routes PR review notifications by path.
+#
+# Syntax: <path-pattern> <owner1> <owner2> ...
+# Later matches win; the LAST matching pattern in this file is what GitHub
+# uses for review-required policies.
+#
+# See https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Update via PR; reviewed by an existing maintainer.
+
+# Default — anything not matched by a more specific rule below
+*                                       @ModelMeld
+
+# Top-level governance + license files require maintainer review
+/LICENSE                                @ModelMeld
+/NOTICE                                 @ModelMeld
+/CODE_OF_CONDUCT.md                     @ModelMeld
+/SECURITY.md                            @ModelMeld
+/GOVERNANCE.md                          @ModelMeld
+/MAINTAINERS.md                         @ModelMeld
+/CODEOWNERS                             @ModelMeld
+
+# Source areas — split out so future maintainers can take ownership without
+# editing every line. For now they all route to the same owner.
+/src/modelmeld/api/                  @ModelMeld
+/src/modelmeld/adapters/             @ModelMeld
+/src/modelmeld/router/               @ModelMeld
+/src/modelmeld/scout/                @ModelMeld
+/src/modelmeld/memory/               @ModelMeld
+/src/modelmeld/privacy/              @ModelMeld
+/src/modelmeld/translation/          @ModelMeld
+/src/modelmeld/cache/                @ModelMeld
+/src/modelmeld/tokens/               @ModelMeld
+/src/modelmeld/hooks/                @ModelMeld
+
+# Curated data files — central control by intent; PRs touching these are
+# rejected per CONTRIBUTING.md, but if one slips through, it MUST get
+# explicit maintainer sign-off
+/src/modelmeld/scout/data/           @ModelMeld
+
+# CI, supply-chain, release infrastructure
+/.github/                               @ModelMeld
+/pyproject.toml                         @ModelMeld
+/Dockerfile                             @ModelMeld
+
+# Docs
+/docs/                                  @ModelMeld
+/README.md                              @ModelMeld

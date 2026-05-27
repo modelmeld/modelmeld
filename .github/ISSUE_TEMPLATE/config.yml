@@ -1,0 +1,29 @@
+# Disables blank issues and routes specific categories elsewhere.
+# https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
+
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/ModelMeld/modelmeld/security/policy
+    about: |
+      Do NOT file security issues publicly. Email security@modelmeld.ai
+      per SECURITY.md (90-day responsible disclosure).
+
+  - name: Question / discussion
+    url: https://github.com/ModelMeld/modelmeld/discussions
+    about: |
+      For questions, ideas, or integration help — use GitHub Discussions.
+      The issue tracker is for bugs and feature requests only.
+
+  - name: Commercial / enterprise inquiry
+    url: mailto:hello@modelmeld.ai
+    about: |
+      Hosted tier, enterprise features, registry feed subscription,
+      partnership inquiries — email hello@modelmeld.ai.
+
+  - name: Code of Conduct concern
+    url: mailto:hello@modelmeld.ai
+    about: |
+      Reports of Code of Conduct violations go to hello@modelmeld.ai,
+      handled confidentially by the maintainer team.

@@ -1,0 +1,39 @@
+# GitHub Citation File Format — https://citation-file-format.github.io
+#
+# Lets researchers + ML practitioners cite the project correctly when it
+# appears in their work. GitHub renders a "Cite this repository" button
+# on the repo home page once this file is present.
+#
+# Update `version` + `date-released` on each tagged release; the
+# release-please workflow can be extended to do this automatically.
+
+cff-version: 1.2.0
+message: "If you use this software in published work, please cite it as below."
+title: "ModelMeld — capability-based AI inference routing"
+abstract: >
+  OpenAI-compatible AI gateway that routes each request to the cheapest
+  provably-competent model. Capability-based routing across providers,
+  multi-tenant isolation, PII scrubbing before egress. Open-core: code is
+  AGPL-3.0-or-later; the curated registry feed that keeps routing decisions
+  current is a separate subscription product.
+
+type: software
+url: "https://github.com/modelmeld/modelmeld"
+repository-code: "https://github.com/modelmeld/modelmeld"
+license: AGPL-3.0-or-later
+keywords:
+  - llm
+  - ai-gateway
+  - routing
+  - openai-compatible
+  - capability-routing
+  - inference
+
+authors:
+  - name: "ModelMeld and contributors"
+    website: "https://modelmeld.ai"
+    email: hello@modelmeld.ai
+
+# Updated per release. Bump these two fields when cutting a tag.
+version: "0.1.3"
+date-released: "2026-05-26"

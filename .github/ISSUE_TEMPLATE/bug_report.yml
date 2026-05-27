@@ -1,0 +1,118 @@
+name: Bug report
+description: Something is broken or behaves contrary to documented expectation.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report. Before you continue: if this is a
+        **security-sensitive** issue (auth bypass, credential leak, PII
+        exposure, cross-tenant data leak, anything you'd want disclosed
+        privately), **do not open a public issue** — email
+        `security@modelmeld.ai` instead. See
+        [`SECURITY.md`](../blob/main/SECURITY.md) for the disclosure policy.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One paragraph — what's broken and what you expected instead.
+      placeholder: |
+        Calling /v1/chat/completions with model=X returns Y when I expected Z.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: |
+        Minimum steps for someone else to hit the same behavior. Include
+        the exact request body / settings / env vars where relevant.
+      placeholder: |
+        1. Set MODELMELD_ROUTING_POLICY=scout_driven
+        2. POST {...} to /v1/chat/completions
+        3. Observe Y; expected Z
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened. Cite docs/config if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: |
+        What you observed instead. Paste error messages, response bodies,
+        log lines. Use code blocks for readability.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: gateway-version
+    attributes:
+      label: modelmeld version
+      description: Output of `pip show modelmeld | grep -i version` (or the git SHA if running from source).
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.12.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other (specify in additional context)
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Relevant configuration
+      description: |
+        Env vars (with secrets redacted), settings overrides, the routing
+        policy, which backends are configured.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / stack trace
+      description: |
+        Paste any relevant log output. Redact API keys, prompt content
+        you don't want public, and tenant identifiers.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else relevant — related issues, workarounds you tried, hypotheses.
+    validations:
+      required: false

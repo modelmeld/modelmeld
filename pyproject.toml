@@ -1,0 +1,87 @@
+[build-system]
+requires = ["hatchling>=1.20"]
+build-backend = "hatchling.build"
+
+[project]
+name = "modelmeld"
+version = "0.1.3"
+description = "AI gateway with capability-based routing across providers + bring-your-own-key passthrough. OpenAI- and Anthropic-compatible. Drop-in for Claude Code, Cursor, Aider, Cline, Continue."
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.10"
+keywords = ["ai", "gateway", "llm", "proxy", "openai", "anthropic", "vllm", "modelmeld"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+authors = [{ name = "ModelMeld and contributors" }]
+# Minimum versions reflect a pip-audit clean baseline.
+# Bump these when CVEs land against transitive deps.
+dependencies = [
+    "fastapi>=0.110",
+    "starlette>=1.0.1",   # PYSEC-2026-161 fix (pulled in transitively by fastapi)
+    "pydantic>=2.5",
+    "pydantic-settings>=2.0",
+    "httpx>=0.27",
+    "uvicorn[standard]>=0.27",
+    "pyyaml>=6.0",        # Aider Polyglot leaderboard format
+    "cryptography>=42",   # Ed25519 license JWT verify
+]
+
+[project.optional-dependencies]
+# Provider-specific extras. Install with `pip install modelmeld[openai,anthropic]`.
+openai = ["openai>=1.40"]
+anthropic = ["anthropic>=0.30"]
+all-providers = ["openai>=1.40", "anthropic>=0.30"]
+# Cross-tokenizer counting. Provides accurate per-model token
+# counts via tiktoken / anthropic / huggingface backends bundled by litellm.
+tokenizer = ["litellm>=1.40"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "hypothesis>=6.100",   # property-based tests
+    "ruff>=0.5",
+    "pyright>=1.1",
+    "openai>=1.40",
+    "anthropic>=0.30",
+]
+[project.scripts]
+# Customer-facing CLI. `modelmeld setup --tool claude-code` is the
+# one-command onboarding for Claude Code (cursor/aider/cline/continue
+# post-launch). See modelmeld.cli.setup for the behavior contract.
+modelmeld = "modelmeld.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ModelMeld/modelmeld"
+Issues = "https://github.com/ModelMeld/modelmeld/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/modelmeld"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/modelmeld", "README.md", "LICENSE"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+strict = ["src/modelmeld"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = ["--import-mode=importlib"]
+markers = [
+    "requires_gpu: needs a live vLLM endpoint (skipped unless --gpu is passed)",
+]

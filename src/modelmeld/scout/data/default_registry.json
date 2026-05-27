@@ -1,0 +1,502 @@
+{
+  "version": 1,
+  "snapshot_release_date": "2026-05-22",
+  "last_updated": "2026-05-22T00:00:00Z",
+  "notes": "Production-tuned snapshot frozen at OSS release date. Scores are derived from public benchmark data (SWE-Bench Verified, Aider Polyglot, LiveBench, LMArena, Artificial Analysis) via the same methodology that powers the live curated feed — see docs/open-core-boundary.md. The foundation-model market deflates ~50%/year, so a snapshot stales within ~6 months as new models ship and prices drop. For continuously-updated data, configure MODELMELD_REGISTRY_FEED_URL + a license key and the gateway fetches from the live feed. See docs/registry-feed.md.",
+  "task_categories": [
+    "coding",
+    "reasoning",
+    "simple_qa",
+    "summarization",
+    "tool_use"
+  ],
+  "models": [
+    {
+      "model_id": "claude-opus-4-7",
+      "provider": "anthropic",
+      "context_window": 200000,
+      "cost_per_m_input": 5.00,
+      "cost_per_m_output": 25.00,
+      "task_scores": {
+        "coding": 0.81,
+        "reasoning": 0.90,
+        "simple_qa": 0.95,
+        "summarization": 0.92,
+        "tool_use": 0.90
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "context_window": 200000,
+      "cost_per_m_input": 3.00,
+      "cost_per_m_output": 15.00,
+      "task_scores": {
+        "coding": 0.80,
+        "reasoning": 0.85,
+        "simple_qa": 0.93,
+        "summarization": 0.90,
+        "tool_use": 0.85
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "claude-haiku-4-5",
+      "provider": "anthropic",
+      "context_window": 200000,
+      "cost_per_m_input": 0.80,
+      "cost_per_m_output": 4.00,
+      "task_scores": {
+        "coding": 0.60,
+        "reasoning": 0.70,
+        "simple_qa": 0.92,
+        "summarization": 0.85,
+        "tool_use": 0.75
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "gpt-5",
+      "provider": "openai",
+      "context_window": 400000,
+      "cost_per_m_input": 0.625,
+      "cost_per_m_output": 5.00,
+      "task_scores": {
+        "coding": 0.80,
+        "reasoning": 0.88,
+        "simple_qa": 0.94,
+        "summarization": 0.92,
+        "tool_use": 0.88
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "gpt-5-mini",
+      "provider": "openai",
+      "context_window": 128000,
+      "cost_per_m_input": 0.25,
+      "cost_per_m_output": 2.00,
+      "task_scores": {
+        "coding": 0.65,
+        "reasoning": 0.72,
+        "simple_qa": 0.90,
+        "summarization": 0.85,
+        "tool_use": 0.78
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "gpt-5-4",
+      "provider": "openai",
+      "context_window": 400000,
+      "cost_per_m_input": 1.25,
+      "cost_per_m_output": 10.00,
+      "task_scores": {
+        "coding": 0.82,
+        "reasoning": 0.90,
+        "simple_qa": 0.95,
+        "summarization": 0.93,
+        "tool_use": 0.89
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "gemini-2-5-pro",
+      "provider": "google",
+      "context_window": 2000000,
+      "cost_per_m_input": 1.25,
+      "cost_per_m_output": 10.00,
+      "task_scores": {
+        "coding": 0.75,
+        "reasoning": 0.82,
+        "simple_qa": 0.93,
+        "summarization": 0.93,
+        "tool_use": 0.83
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "gemini-3",
+      "provider": "google",
+      "context_window": 2000000,
+      "cost_per_m_input": 2.50,
+      "cost_per_m_output": 15.00,
+      "task_scores": {
+        "coding": 0.81,
+        "reasoning": 0.87,
+        "simple_qa": 0.95,
+        "summarization": 0.94,
+        "tool_use": 0.88
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "qwen2.5-coder-32b-instruct",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.28,
+      "cost_per_m_output": 0.28,
+      "task_scores": {
+        "coding": 0.72,
+        "reasoning": 0.65,
+        "simple_qa": 0.80,
+        "summarization": 0.78,
+        "tool_use": 0.70
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1",
+      "supports_tools": false
+    },
+    {
+      "model_id": "qwen2.5-coder-7b-instruct",
+      "provider": "vllm",
+      "context_window": 32768,
+      "cost_per_m_input": 0.07,
+      "cost_per_m_output": 0.07,
+      "task_scores": {
+        "coding": 0.58,
+        "reasoning": 0.50,
+        "simple_qa": 0.72,
+        "summarization": 0.70,
+        "tool_use": 0.55
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1",
+      "supports_tools": false
+    },
+    {
+      "model_id": "qwen3-coder-next",
+      "provider": "vllm",
+      "context_window": 262144,
+      "cost_per_m_input": 0.30,
+      "cost_per_m_output": 0.30,
+      "task_scores": {
+        "coding": 0.78,
+        "reasoning": 0.72,
+        "simple_qa": 0.84,
+        "summarization": 0.81,
+        "tool_use": 0.76
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "deepseek-coder-v2.5",
+      "provider": "vllm",
+      "context_window": 128000,
+      "cost_per_m_input": 0.28,
+      "cost_per_m_output": 0.28,
+      "task_scores": {
+        "coding": 0.74,
+        "reasoning": 0.70,
+        "simple_qa": 0.83,
+        "summarization": 0.80,
+        "tool_use": 0.73
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "deepseek-v3.2",
+      "provider": "vllm",
+      "context_window": 128000,
+      "cost_per_m_input": 0.30,
+      "cost_per_m_output": 0.30,
+      "task_scores": {
+        "coding": 0.73,
+        "reasoning": 0.74,
+        "simple_qa": 0.86,
+        "summarization": 0.84,
+        "tool_use": 0.78
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "llama-3-1-70b-instruct",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.40,
+      "cost_per_m_output": 0.40,
+      "task_scores": {
+        "coding": 0.62,
+        "reasoning": 0.74,
+        "simple_qa": 0.86,
+        "summarization": 0.83,
+        "tool_use": 0.74
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1"
+    },
+    {
+      "model_id": "phi-4",
+      "provider": "vllm",
+      "context_window": 16384,
+      "cost_per_m_input": 0.05,
+      "cost_per_m_output": 0.05,
+      "task_scores": {
+        "coding": 0.55,
+        "reasoning": 0.62,
+        "simple_qa": 0.76,
+        "summarization": 0.72,
+        "tool_use": 0.58
+      },
+      "last_updated": "2026-05-17T00:00:00Z",
+      "source": "seed:public_benchmarks_v1",
+      "supports_tools": false
+    },
+    {
+      "model_id": "deepseek-v4-pro",
+      "provider": "vllm",
+      "context_window": 128000,
+      "cost_per_m_input": 0.32,
+      "cost_per_m_output": 1.10,
+      "task_scores": {
+        "coding": 0.85,
+        "reasoning": 0.92,
+        "simple_qa": 0.92,
+        "summarization": 0.90,
+        "tool_use": 0.85
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "deepseek-r1-distill-llama-70b",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.20,
+      "cost_per_m_output": 0.20,
+      "task_scores": {
+        "coding": 0.75,
+        "reasoning": 0.85,
+        "simple_qa": 0.82,
+        "summarization": 0.80,
+        "tool_use": 0.74
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh",
+      "supports_tools": false
+    },
+    {
+      "model_id": "qwen3-coder-30b",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.30,
+      "cost_per_m_output": 0.30,
+      "task_scores": {
+        "coding": 0.82,
+        "reasoning": 0.75,
+        "simple_qa": 0.82,
+        "summarization": 0.80,
+        "tool_use": 0.75
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "qwen3-coder-480b",
+      "provider": "vllm",
+      "context_window": 262144,
+      "cost_per_m_input": 0.90,
+      "cost_per_m_output": 0.90,
+      "task_scores": {
+        "coding": 0.90,
+        "reasoning": 0.82,
+        "simple_qa": 0.85,
+        "summarization": 0.83,
+        "tool_use": 0.80
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "llama-3-3-70b-instruct",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.40,
+      "cost_per_m_output": 0.40,
+      "task_scores": {
+        "coding": 0.78,
+        "reasoning": 0.82,
+        "simple_qa": 0.88,
+        "summarization": 0.85,
+        "tool_use": 0.80
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "gpt-oss-120b",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.50,
+      "cost_per_m_output": 0.50,
+      "task_scores": {
+        "coding": 0.78,
+        "reasoning": 0.82,
+        "simple_qa": 0.88,
+        "summarization": 0.85,
+        "tool_use": 0.80
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "kimi-k2.6",
+      "provider": "vllm",
+      "context_window": 262144,
+      "cost_per_m_input": 0.60,
+      "cost_per_m_output": 0.60,
+      "task_scores": {
+        "coding": 0.80,
+        "reasoning": 0.85,
+        "simple_qa": 0.86,
+        "summarization": 0.84,
+        "tool_use": 0.85
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "glm-5",
+      "provider": "vllm",
+      "context_window": 202752,
+      "cost_per_m_input": 0.40,
+      "cost_per_m_output": 0.40,
+      "task_scores": {
+        "coding": 0.75,
+        "reasoning": 0.80,
+        "simple_qa": 0.84,
+        "summarization": 0.82,
+        "tool_use": 0.76
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "qwen3-235b-instruct",
+      "provider": "vllm",
+      "context_window": 262144,
+      "cost_per_m_input": 0.50,
+      "cost_per_m_output": 0.50,
+      "task_scores": {
+        "coding": 0.82,
+        "reasoning": 0.84,
+        "simple_qa": 0.88,
+        "summarization": 0.86,
+        "tool_use": 0.80
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "qwen3-coder-flash",
+      "provider": "vllm",
+      "context_window": 1000000,
+      "cost_per_m_input": 0.30,
+      "cost_per_m_output": 0.30,
+      "task_scores": {
+        "coding": 0.84,
+        "reasoning": 0.72,
+        "simple_qa": 0.80,
+        "summarization": 0.78,
+        "tool_use": 0.74
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "deepseek-r1",
+      "provider": "vllm",
+      "context_window": 163840,
+      "cost_per_m_input": 0.50,
+      "cost_per_m_output": 0.60,
+      "task_scores": {
+        "coding": 0.80,
+        "reasoning": 0.92,
+        "simple_qa": 0.85,
+        "summarization": 0.83,
+        "tool_use": 0.76
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "llama-4-scout",
+      "provider": "vllm",
+      "context_window": 1048576,
+      "cost_per_m_input": 0.45,
+      "cost_per_m_output": 0.45,
+      "task_scores": {
+        "coding": 0.74,
+        "reasoning": 0.78,
+        "simple_qa": 0.86,
+        "summarization": 0.88,
+        "tool_use": 0.76
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh"
+    },
+    {
+      "model_id": "phi-4-mini-instruct",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.04,
+      "cost_per_m_output": 0.04,
+      "task_scores": {
+        "coding": 0.50,
+        "reasoning": 0.58,
+        "simple_qa": 0.74,
+        "summarization": 0.68,
+        "tool_use": 0.52
+      },
+      "last_updated": "2026-05-24T00:00:00Z",
+      "source": "seed:estimated_pending_refresh",
+      "supports_tools": false
+    },
+    {
+      "model_id": "granite-4-micro",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.017,
+      "cost_per_m_output": 0.112,
+      "task_scores": {
+        "coding": 0.45,
+        "reasoning": 0.52,
+        "simple_qa": 0.72,
+        "summarization": 0.65,
+        "tool_use": 0.40
+      },
+      "last_updated": "2026-05-25T00:00:00Z",
+      "source": "seed:estimated_pending_refresh",
+      "supports_tools": false
+    },
+    {
+      "model_id": "gemma-3-4b",
+      "provider": "vllm",
+      "context_window": 131072,
+      "cost_per_m_input": 0.04,
+      "cost_per_m_output": 0.08,
+      "task_scores": {
+        "coding": 0.50,
+        "reasoning": 0.55,
+        "simple_qa": 0.74,
+        "summarization": 0.68,
+        "tool_use": 0.45
+      },
+      "last_updated": "2026-05-25T00:00:00Z",
+      "source": "seed:estimated_pending_refresh",
+      "supports_tools": false
+    }
+  ]
+}

@@ -1,0 +1,472 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 ModelMeld.
+
+"""CapabilityScout — picks a specific model from the registry per request.
+
+The capability routing primitive. Given a request, the scout:
+  1. Classifies the prompt into a task category (via TaskCategoryClassifier)
+  2. Asks the ModelRegistry for the cheapest model meeting `quality_threshold`
+     on that category, filtered by `eligible_providers`
+  3. Returns a CapabilityDecision the router can act on
+
+The decision carries a chosen model + fallbacks so the router can fail over
+to the next-cheapest qualified model when the chosen provider is unhealthy.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from modelmeld.api.schemas import ChatCompletionRequest
+from modelmeld.scout.devtool import Fingerprint, Fingerprinter
+from modelmeld.scout.policy import (
+    ModelMeldPolicy,
+    frontier_providers,
+    oss_providers,
+    resolve_policy,
+    should_escalate_to_frontier,
+)
+from modelmeld.scout.registry import ModelEntry, ModelRegistry
+from modelmeld.scout.task_category import (
+    TaskCategoryClassifier,
+    TaskCategoryDecision,
+)
+
+# Exposed as a module constant so operators can override
+# without hunting through code. The 0.70 figure is the current production-
+# tuned value — the cheapest model on each task category must clear this
+# task_score (0..1 scale) to be a candidate. Higher → stricter quality
+# bar, smaller candidate set, higher cost. The *methodology* for deriving
+# this threshold lives in `modelmeld_enterprise.routing_tuning`.
+DEFAULT_QUALITY_THRESHOLD = 0.70
+
+# When the request has `tools=[...]` or its estimated
+# input prompt exceeds the model's context window, the scout's filters
+# kick in. The headroom multiplier reserves space for the response on
+# top of the input — a model whose context window is exactly equal
+# to the input has zero room for output. 1.2× is a reasonable safety
+# margin for typical agentic coding workloads (input dominates output
+# ~5-10:1 for code).
+_CONTEXT_WINDOW_HEADROOM_MULT = 1.2
+# Fallback when no token_counter is configured (or fails). 1 token ≈
+# 4 chars of English; conservative — actual ratio is closer to 3.5
+# for code, 4-5 for natural language.
+_CHARS_PER_TOKEN_ESTIMATE = 4
+
+# DevTool fingerprint → routing biases.
+#
+# The same tool sends very different request shapes: Cursor's
+# autocomplete is sub-Haiku territory, but Cursor's chat is OSS-mid.
+# Biasing by tool alone is too coarse. The bias logic combines tool
+# fingerprint + request SHAPE (max_tokens, input chars, tools presence)
+# to detect specific patterns we can route cheap.
+#
+# Autocomplete-shape detection thresholds. Empirically derived from
+# Cursor/Copilot/Continue autocomplete traffic patterns:
+#   - max_tokens ≤ 256 (typical autocomplete budget; chat is usually
+#     ≥1024)
+#   - estimated input ≤ 4000 chars (~1000 tokens; chat with @-mentioned
+#     files is 10K+)
+#   - no tools= field (autocomplete is single-shot, no agentic
+#     tool calls)
+# All three must hold to classify as autocomplete-shape and apply the
+# sub-Haiku tier bias.
+_AUTOCOMPLETE_MAX_TOKENS = 256
+_AUTOCOMPLETE_MAX_INPUT_CHARS = 4000
+# The quality_threshold to apply when autocomplete-shape detected.
+# Lower threshold makes the sub-Haiku tier (granite-4-micro,
+# gemma-3-4b, phi-4-mini) eligible. 0.55 is below the SLM capability
+# cliff for tool-use but above raw text quality — matches the
+# "trivial-fast" tier's task scores.
+_AUTOCOMPLETE_QUALITY_THRESHOLD = 0.55
+
+# Optional dependency: framework-supplied hints. Imported under
+# TYPE_CHECKING to avoid an import cycle (api.routing_hints imports task_category).
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from modelmeld.api.routing_hints import RoutingHints
+
+
+class NoEligibleModelError(RuntimeError):
+    """Raised when no model in the registry meets the quality bar for the task."""
+
+    def __init__(
+        self,
+        task_category: str,
+        quality_threshold: float,
+        eligible_providers: frozenset[str] | None,
+    ) -> None:
+        self.task_category = task_category
+        self.quality_threshold = quality_threshold
+        self.eligible_providers = eligible_providers
+        providers = (
+            f"; providers={sorted(eligible_providers)}"
+            if eligible_providers is not None else ""
+        )
+        super().__init__(
+            f"No model in registry meets threshold {quality_threshold} "
+            f"for task '{task_category}'{providers}"
+        )
+
+
+@dataclass(frozen=True)
+class CapabilityDecision:
+    """Result of CapabilityScout.choose().
+
+    `chosen_model_id`     — the model the router should send the request to
+    `chosen_provider`     — provider for adapter lookup (e.g. "openai")
+    `task_category`       — what the classifier called this prompt
+    `task_score`          — chosen model's task_scores[task_category]
+    `quality_threshold`   — threshold the chosen model just exceeded
+    `fallback_model_ids`  — next-cheapest qualified models, in cost order
+    `category_decision`   — full TaskCategoryDecision (per-category scores, rationale)
+    `devtool_fingerprint` — dev-tool fingerprint, for hooks/analytics
+    `rationale`           — short trace for logs ("category=coding;chose=qwen3-coder-next;cost=$0.32/M")
+    """
+
+    chosen_model_id: str
+    chosen_provider: str
+    task_category: str
+    task_score: float
+    quality_threshold: float
+    fallback_model_ids: list[str] = field(default_factory=list)
+    category_decision: TaskCategoryDecision | None = None
+    devtool_fingerprint: Fingerprint | None = None
+    rationale: str = ""
+
+    def with_model(self, model_id: str, provider: str, task_score: float) -> "CapabilityDecision":
+        """Return a copy with a different chosen model (used during failover)."""
+        return CapabilityDecision(
+            chosen_model_id=model_id,
+            chosen_provider=provider,
+            task_category=self.task_category,
+            task_score=task_score,
+            quality_threshold=self.quality_threshold,
+            fallback_model_ids=self.fallback_model_ids,
+            category_decision=self.category_decision,
+            devtool_fingerprint=self.devtool_fingerprint,
+            rationale=f"{self.rationale};failover={model_id}",
+        )
+
+
+class CapabilityScout:
+    """Picks the cheapest provably-competent model for each request.
+
+    The constructor takes a registry, a task classifier, a quality threshold
+    (0..1; default 0.70), and an optional set of eligible providers. When
+    `eligible_providers` is None, all providers in the registry are considered.
+    Restricting to providers you actually have adapters for is the caller's
+    responsibility — `build_router` does this for us at app-init.
+    """
+
+    name = "capability"
+
+    def __init__(
+        self,
+        registry: ModelRegistry,
+        classifier: TaskCategoryClassifier | None = None,
+        quality_threshold: float = DEFAULT_QUALITY_THRESHOLD,
+        eligible_providers: frozenset[str] | None = None,
+        fingerprinter: Fingerprinter | None = None,
+        fallback_depth: int = 5,
+    ) -> None:
+        if not 0.0 <= quality_threshold <= 1.0:
+            raise ValueError(f"quality_threshold must be in [0,1], got {quality_threshold}")
+        if fallback_depth < 0:
+            raise ValueError(f"fallback_depth must be ≥0, got {fallback_depth}")
+        self.registry = registry
+        self.classifier = classifier or TaskCategoryClassifier()
+        self.quality_threshold = quality_threshold
+        self.eligible_providers = eligible_providers
+        self.fingerprinter = fingerprinter or Fingerprinter()
+        self.fallback_depth = fallback_depth
+
+    async def choose(
+        self,
+        request: ChatCompletionRequest,
+        hints: "RoutingHints | None" = None,
+        available_frontier_providers: frozenset[str] | None = None,
+    ) -> CapabilityDecision:
+        """Pick the best (model, provider) for this request.
+
+        `available_frontier_providers`: when the request carries BYOK
+        credentials, this is the set of frontier providers the route
+        handler can dispatch to (i.e., the providers for which the
+        customer supplied a key). The AUTO-escalated and QUALITY
+        policies use this to restrict frontier picks to providers
+        the customer can actually pay for — picking gpt-5-mini when
+        the customer only supplied an Anthropic BYOK key would just
+        cascade to a 503. None means "no BYOK restriction known."
+        """
+        # Hint-driven category overrides the classifier. Frameworks know what
+        # their agents do; we trust the declaration when present.
+        category_decision: TaskCategoryDecision | None = None
+        category_source = "classifier"
+        if hints is not None and hints.effective_category() is not None:
+            category = hints.effective_category()
+            assert category is not None  # narrow for type checker
+            category_source = (
+                "hint:task_category" if hints.task_category else "hint:agent_role"
+            )
+        else:
+            category_decision = self.classifier.classify(request)
+            category = category_decision.category
+        fingerprint = self.fingerprinter.identify(request)
+
+        # Threshold + provider filter can also be hinted at request time.
+        threshold = self.quality_threshold
+        eligible = self.eligible_providers
+        if hints is not None:
+            if hints.quality_threshold is not None:
+                threshold = hints.quality_threshold
+            if hints.excluded_providers:
+                if eligible is not None:
+                    eligible = frozenset(eligible) - hints.excluded_providers
+                else:
+                    eligible = self._all_registry_providers() - hints.excluded_providers
+                if not eligible:
+                    raise NoEligibleModelError(
+                        task_category=category,
+                        quality_threshold=threshold,
+                        eligible_providers=eligible,
+                    )
+
+        # Alias-based policy resolution. When the request's `model`
+        # field matches a ModelMeld alias (e.g.,
+        # anthropic/modelmeld-saver), apply that policy's provider tier
+        # filter. Hints win over policy. Non-alias model ids pass
+        # through unaffected. See modelmeld/scout/policy.py.
+        #
+        # Tier selection is done via provider filter, NOT task_score
+        # threshold manipulation. Task scores are tuned per-category and
+        # change with every benchmark refresh — using them as policy
+        # gates causes silent breakage when scores drift (e.g., Sonnet's
+        # coding score happens to sit at 0.80 today, well below where a
+        # static "frontier threshold" would naively land).
+        policy = resolve_policy(getattr(request, "model", None))
+        policy_rationale = ""
+        if policy is not None and (hints is None or hints.quality_threshold is None):
+            if policy is ModelMeldPolicy.SAVER:
+                # OSS only. Frontier-provider rows are filtered entirely
+                # → predictable cost ceiling for the customer.
+                oss = oss_providers()
+                eligible = (frozenset(eligible) & oss) if eligible is not None else oss
+                policy_rationale = "policy=saver(tier=oss_only)"
+            elif policy is ModelMeldPolicy.AUTO:
+                # Default OSS; escalate to frontier on reasoning markers.
+                # When escalating, REPLACE eligible (don't intersect):
+                # the scout's persistent eligible set is typically the
+                # OSS upstream pool, so intersecting with frontier yields
+                # an empty set. REPLACE lets the scout pick frontier
+                # rows from the registry; the router then resolves the
+                # adapter from per-request BYOK overrides.
+                #
+                # Further restrict to providers the customer actually
+                # supplied BYOK keys for — otherwise scout might pick
+                # gpt-5-mini when the customer only has an Anthropic key.
+                escalate, marker_count = should_escalate_to_frontier(request)
+                if escalate:
+                    fr = frontier_providers()
+                    if available_frontier_providers is not None:
+                        fr = fr & available_frontier_providers
+                    eligible = fr
+                    policy_rationale = (
+                        f"policy=auto(escalated=frontier;markers={marker_count})"
+                    )
+                else:
+                    policy_rationale = f"policy=auto(escalated=no;markers={marker_count})"
+            elif policy is ModelMeldPolicy.QUALITY:
+                # Frontier by default UNLESS the request is detected as
+                # autocomplete-shape (handled by the bias logic below).
+                # Same BYOK-availability restriction as AUTO-escalated.
+                if not self._is_autocomplete_shape(request):
+                    fr = frontier_providers()
+                    if available_frontier_providers is not None:
+                        fr = fr & available_frontier_providers
+                    eligible = fr
+                    policy_rationale = "policy=quality(tier=frontier_first)"
+                else:
+                    policy_rationale = "policy=quality(downgrade=autocomplete_shape)"
+
+        # DevTool fingerprint + request shape → routing bias.
+        # Only applies when no explicit hint overrode the threshold (hints
+        # always win); biases lower the bar to admit cheap-tier models for
+        # detected shapes (autocomplete) where premium-quality routing is
+        # wasteful. Bias NEVER raises the threshold — defensive: we let
+        # cheap models in for cheap-tier shapes; we don't gate routing
+        # tighter than the operator-configured threshold.
+        bias_rationale = ""
+        if hints is None or hints.quality_threshold is None:
+            biased = self._apply_shape_bias(request, fingerprint, threshold)
+            if biased is not None:
+                threshold, bias_rationale = biased
+
+        # Capability filters derived from request shape.
+        # Requests carrying `tools=[...]` MUST go to a tool-capable model
+        # (small models < ~7B fail multi-step tool chains per the
+        # SLM-for-Agents survey). Estimated input + 1.2× headroom MUST fit
+        # in the model's context window so the response isn't truncated.
+        require_tool_support = bool(request.tools)
+        min_ctx_required = self._required_context_window(request)
+
+        ranked = self.registry.rank(
+            task_category=category,
+            quality_threshold=threshold,
+            eligible_providers=eligible,
+            min_context_window=min_ctx_required,
+            require_tool_support=require_tool_support,
+        )
+        if not ranked:
+            raise NoEligibleModelError(
+                task_category=category,
+                quality_threshold=threshold,
+                eligible_providers=eligible,
+            )
+
+        chosen_entry, chosen_cost = ranked[0]
+        fallbacks: list[str] = [
+            entry.model_id for entry, _ in ranked[1 : 1 + self.fallback_depth]
+        ]
+
+        rationale = (
+            f"category={category}(src={category_source});"
+            f"score={chosen_entry.task_scores.get(category, 0.0):.2f};"
+            f"chose={chosen_entry.model_id};"
+            f"cost=${chosen_cost:.3f}/Mblended"
+        )
+        if policy_rationale:
+            rationale = f"{rationale};{policy_rationale}"
+        if bias_rationale:
+            rationale = f"{rationale};{bias_rationale}"
+
+        return CapabilityDecision(
+            chosen_model_id=chosen_entry.model_id,
+            chosen_provider=chosen_entry.provider,
+            task_category=category,
+            task_score=chosen_entry.task_scores.get(category, 0.0),
+            quality_threshold=threshold,
+            fallback_model_ids=fallbacks,
+            category_decision=category_decision,
+            devtool_fingerprint=fingerprint,
+            rationale=rationale,
+        )
+
+    def lookup_fallback(self, model_id: str) -> ModelEntry | None:
+        """Resolve a fallback model_id to its registry entry. Used by the router."""
+        return self.registry.get(model_id)
+
+    def _all_registry_providers(self) -> frozenset[str]:
+        return frozenset(e.provider for e in self.registry.all_entries())
+
+    def _apply_shape_bias(
+        self,
+        request: ChatCompletionRequest,
+        fingerprint: Fingerprint,
+        current_threshold: float,
+    ) -> tuple[float, str] | None:
+        """Return (biased_threshold, rationale) or None if no bias applies.
+
+        Shape-bias logic — combines DevTool fingerprint with
+        request shape (max_tokens, input chars, tools presence) to detect
+        cheap-tier-appropriate patterns. The first matching bias wins;
+        biases NEVER raise the threshold above the operator-configured
+        value (defensive — let cheap models in for cheap shapes, don't
+        gate routing tighter).
+
+        Currently detects:
+          - autocomplete-shape: any tool + max_tokens ≤ 256 + input ≤ 4K
+            chars + no tools[] → quality_threshold lowered to 0.55 so
+            sub-Haiku tier models (granite-4-micro, gemma-3-4b,
+            phi-4-mini) become eligible. Tool fingerprint included in
+            rationale for FinOps slicing.
+
+        Future biases (deferred — need real production traffic data):
+          - Aider commit-message-shape → cheap tier
+          - Claude Code background-pattern-shape → cheap tier
+          - Cline plan-mode → premium tier (raise threshold? — would
+            need to gate via operator opt-in)
+        """
+        if self._is_autocomplete_shape(request):
+            new_threshold = _AUTOCOMPLETE_QUALITY_THRESHOLD
+            # Never raise — only lower
+            if new_threshold >= current_threshold:
+                return None
+            rationale = (
+                f"bias=autocomplete_shape("
+                f"tool={fingerprint.tool.value};"
+                f"threshold:{current_threshold:.2f}→{new_threshold:.2f})"
+            )
+            return new_threshold, rationale
+        return None
+
+    def _is_autocomplete_shape(self, request: ChatCompletionRequest) -> bool:
+        """True iff the request matches the autocomplete signature.
+
+        Empirically: autocomplete is short input (≤ ~1000 tokens),
+        small max_tokens budget (≤ 256), no tool definitions, and
+        usually a single user message. Any of the four conditions
+        failing disqualifies — we'd rather miss an autocomplete bias
+        than misroute a real chat to sub-Haiku tier and degrade UX.
+        """
+        if request.tools:
+            return False
+        if request.max_tokens is None or request.max_tokens > _AUTOCOMPLETE_MAX_TOKENS:
+            return False
+        # Count input chars from message contents.
+        char_count = 0
+        for msg in request.messages:
+            content = getattr(msg, "content", None)
+            if content is None:
+                continue
+            if isinstance(content, str):
+                char_count += len(content)
+            elif isinstance(content, list):
+                for part in content:
+                    text = getattr(part, "text", None)
+                    if text is not None:
+                        char_count += len(text)
+            if char_count > _AUTOCOMPLETE_MAX_INPUT_CHARS:
+                return False  # short-circuit on first overage
+        return char_count <= _AUTOCOMPLETE_MAX_INPUT_CHARS
+
+    def _required_context_window(self, request: ChatCompletionRequest) -> int:
+        """Estimate the context window the request demands.
+
+        Counts input chars across all message contents, divides by
+        ~4 chars/token (the conservative-for-code estimate per the
+        litellm canonical pattern), adds `max_tokens` budget for the
+        response, then applies 1.2× headroom for prompt-engineering
+        overhead (system prompt template, message role tokens, etc.).
+
+        Returns 0 when the request is small enough that the filter is
+        a no-op. The filter only kicks in when input + response
+        plausibly exceeds smaller models' context windows
+        (~16K-32K range).
+        """
+        char_count = 0
+        for msg in request.messages:
+            content = getattr(msg, "content", None)
+            if content is None:
+                continue
+            if isinstance(content, str):
+                char_count += len(content)
+            elif isinstance(content, list):
+                # multimodal: count text parts; image/audio not in tokens here
+                for part in content:
+                    text = getattr(part, "text", None)
+                    if text is not None:
+                        char_count += len(text)
+        # Include tool definition schemas (Claude Code sends 30-40K
+        # tokens of tool defs even before the user types).
+        if request.tools:
+            for tool in request.tools:
+                try:
+                    char_count += len(str(tool.function.parameters))
+                except (AttributeError, TypeError):
+                    char_count += 200  # rough estimate for unknown tool shape
+                if hasattr(tool, "function") and hasattr(tool.function, "description"):
+                    char_count += len(tool.function.description or "")
+        input_tokens = char_count // _CHARS_PER_TOKEN_ESTIMATE
+        response_budget = request.max_tokens or 1024
+        return int((input_tokens + response_budget) * _CONTEXT_WINDOW_HEADROOM_MULT)

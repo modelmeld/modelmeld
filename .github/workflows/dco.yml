@@ -1,0 +1,84 @@
+# Developer Certificate of Origin (DCO) check.
+#
+# Rejects any PR whose commits lack a `Signed-off-by:` trailer matching the
+# commit author. Documented in CONTRIBUTING.md; the full DCO text is at
+# https://developercertificate.org.
+#
+# Self-contained shell check (no third-party action) — easier to audit, no
+# trust dependency on a GitHub Marketplace publisher. Pinned actions/checkout
+# to a commit SHA per supply-chain hardening (see SECURITY.md).
+
+name: DCO
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dco-check:
+    name: DCO signoff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0  # full history needed to enumerate PR commits
+
+      - name: Verify Signed-off-by trailer on every commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          MISSING=0
+          # Iterate over each commit introduced by the PR.
+          for commit in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
+            # Skip merge commits — they don't need their own signoff.
+            if [ "$(git cat-file -p "${commit}" | grep -c '^parent ')" -ge 2 ]; then
+              echo "skip ${commit::8}: merge commit"
+              continue
+            fi
+
+            author_name="$(git log -1 --format='%an' "${commit}")"
+            author_email="$(git log -1 --format='%ae' "${commit}")"
+            expected="Signed-off-by: ${author_name} <${author_email}>"
+
+            if git log -1 --format='%B' "${commit}" | grep -qiF "${expected}"; then
+              echo "ok   ${commit::8}: signed-off by ${author_name}"
+            else
+              echo "FAIL ${commit::8}: missing or mismatched Signed-off-by"
+              echo "     expected:  ${expected}"
+              echo "     trailers found:"
+              git log -1 --format='%B' "${commit}" | grep -i 'signed-off-by:' || echo "     (none)"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+
+          if [ "${MISSING}" -gt 0 ]; then
+            echo ""
+            echo "==============================================================="
+            echo "${MISSING} commit(s) missing DCO signoff."
+            echo "==============================================================="
+            echo ""
+            echo "Each commit in your PR needs a 'Signed-off-by:' trailer that"
+            echo "matches the commit author. Fix with:"
+            echo ""
+            echo "    git commit --amend --signoff       # last commit only"
+            echo "    git rebase HEAD~${MISSING} --signoff  # last ${MISSING} commits"
+            echo ""
+            echo "Then force-push to your PR branch."
+            echo ""
+            echo "Full DCO text: https://developercertificate.org"
+            echo "See CONTRIBUTING.md for context."
+            exit 1
+          fi
+
+          echo ""
+          echo "All commits have valid DCO signoff."

@@ -1,0 +1,65 @@
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.local
+.env.*.local
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.hypothesis/
+
+# Build artifacts
+*.log
+*.pid
+
+# Secrets — never commit
+*.pem
+*.key
+secrets/
+.secrets/
+
+# Local DB / cache state
+*.sqlite
+*.db
+postgres-data/
+redis-data/
+qdrant-data/
+
+# SBOM / build artifacts
+sbom.cdx.json
+*.cosign.bundle
+
+# Model artifacts (large)
+models/
+*.safetensors
+*.bin
+*.gguf

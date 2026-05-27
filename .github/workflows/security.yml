@@ -1,0 +1,56 @@
+name: security
+
+# Security scanning. Runs on every PR + push to main + weekly schedule.
+# The weekly schedule catches CVEs disclosed after a PR merges.
+#
+# Two jobs:
+#   - pip-audit: scans Python deps for known CVEs (OSV database via PyPI)
+#   - gitleaks: scans git history for accidentally-committed secrets
+#
+# Both are blocking — green security required to merge.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly Mon 09:00 UTC
+    - cron: '0 9 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Audit
+        # --skip-editable skips local-path packages. --strict treats any
+        # vuln as a failure; remove if you need to triage MEDIUM/LOW
+        # without blocking PRs.
+        run: pip-audit --strict --skip-editable
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch full history so secret scanning checks every commit,
+          # not just the merge commit. Without this, a secret added then
+          # reverted in a single PR would slip through.
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Custom config — see .gitleaks.toml at repo root. Allowlists
+          # known PII-scrubber test fixtures (synthetic credential
+          # shapes like `sk-ant-api03-aaaaaaaa...`).
+          GITLEAKS_CONFIG: .gitleaks.toml

@@ -1,0 +1,43 @@
+name: CI
+
+# Lint + typecheck + test on every PR + push to main. Three Python
+# versions matrix to catch interpreter-specific regressions. Boundary
+# verifier runs after tests so a broken-OSS-boundary PR fails fast.
+#
+# This file is the OSS repo's CI. The monorepo also has a CI workflow
+# at .github/workflows/core-engine-ci.yml that exercises the same
+# package from the monorepo layout.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check .
+      - name: Pyright typecheck
+        run: pyright src
+      - name: Pytest
+        run: pytest tests -v
+      - name: Open-core boundary verify
+        run: python scripts/verify_boundary.py
