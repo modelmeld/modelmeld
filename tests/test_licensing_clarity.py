@@ -15,6 +15,15 @@ _CORE_DIR = _REPO_ROOT / "core-engine"
 _DATA_DIR = _CORE_DIR / "src" / "modelmeld" / "scout" / "data"
 _DOCS = _REPO_ROOT / "docs"
 
+# In the OSS-flat layout, files are at repo root (no core-engine/ prefix).
+# These tests check monorepo-layout invariants; skip the whole module when
+# we're running from the public OSS layout.
+if not _CORE_DIR.is_dir():
+    pytest.skip(
+        "Monorepo-layout tests skipped (OSS-flat layout has no core-engine/)",
+        allow_module_level=True,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Required files exist

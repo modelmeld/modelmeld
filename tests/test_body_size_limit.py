@@ -136,7 +136,14 @@ def test_non_http_scope_passes_through() -> None:
         pass
 
     import asyncio
-    asyncio.get_event_loop().run_until_complete(
-        middleware({"type": "lifespan"}, noop_recv, noop_send),
-    )
+    # asyncio.get_event_loop() raises RuntimeError on Python 3.10+ when no
+    # event loop exists in the current thread (e.g. pytest sync test).
+    # Create a fresh loop, run the coroutine, close cleanly.
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            middleware({"type": "lifespan"}, noop_recv, noop_send),
+        )
+    finally:
+        loop.close()
     assert received == ["lifespan"]

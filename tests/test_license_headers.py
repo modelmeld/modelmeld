@@ -31,6 +31,15 @@ _ENT_ROOT = _REPO_ROOT / "enterprise-control" / "src" / "modelmeld_enterprise"
 _OSS_MARKER = "SPDX-License-Identifier: AGPL-3.0-or-later"
 _ENT_MARKER = "Proprietary and confidential"
 
+# Internal-tooling tests: rely on `scripts/apply_license_headers.py` (not
+# shipped in OSS) and the monorepo layout. Skip the whole module when we're
+# running from the OSS-flat layout.
+if not _APPLIER.is_file():
+    pytest.skip(
+        "Internal license-applier tests skipped (OSS layout omits apply_license_headers.py)",
+        allow_module_level=True,
+    )
+
 
 def _head(path: Path, n_lines: int = 8) -> str:
     return "\n".join(path.read_text(encoding="utf-8").splitlines()[:n_lines])
