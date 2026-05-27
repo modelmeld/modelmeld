@@ -359,8 +359,8 @@ returning a class when tests expect an instance). Switch to
 ("think step by step about ..."), or to `-quality` for a session,
 when you hit one of these.
 
-We track these metrics continuously; keep the routing notes in
-[`../which-tier.md`](../which-tier.md) current with measured numbers per tier.
+We track these metrics continuously; see [`../which-tier.md`](../which-tier.md)
+for current measured numbers per tier.
 
 ## Backwards compatibility — old aliases
 
