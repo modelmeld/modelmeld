@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from modelmeld.scout.registry import ModelEntry, ModelRegistry, default_registry
 
-
 # ---------------------------------------------------------------------------
 # Default registry shipped with the package
 # ---------------------------------------------------------------------------

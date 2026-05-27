@@ -27,7 +27,8 @@ import asyncio
 from collections import defaultdict
 
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from modelmeld.memory import InMemoryMemoryStore, Role
 from modelmeld.memory.base import (
@@ -35,7 +36,6 @@ from modelmeld.memory.base import (
     InvalidTenantIdError,
     validate_tenant_id,
 )
-
 
 # Tenant-id strategy: produce values likely to pass `validate_tenant_id`.
 # Using a small pool of pre-validated ids gives hypothesis more freedom

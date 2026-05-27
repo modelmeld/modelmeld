@@ -9,9 +9,7 @@ must be deterministic, false-positive-resistant, and operator-tunable.
 """
 from __future__ import annotations
 
-import pytest
-
-from modelmeld.api.schemas import ChatCompletionRequest, UserMessage, SystemMessage
+from modelmeld.api.schemas import ChatCompletionRequest, SystemMessage, UserMessage
 from modelmeld.scout.policy import (
     POLICY_QUALITY_THRESHOLD,
     ModelMeldPolicy,
@@ -23,7 +21,6 @@ from modelmeld.scout.policy import (
     resolve_policy,
     should_escalate_to_frontier,
 )
-
 
 # ---------------------------------------------------------------------------
 # resolve_policy

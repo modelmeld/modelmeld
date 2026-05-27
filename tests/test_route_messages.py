@@ -23,7 +23,6 @@ import json
 from collections.abc import AsyncIterator
 
 import httpx
-import pytest
 
 from modelmeld.adapters.base import ProviderAdapter
 from modelmeld.api.schemas import (
@@ -43,7 +42,6 @@ from modelmeld.memory import (
     InMemoryMemoryStore,
     Role,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock adapters
@@ -321,7 +319,15 @@ async def test_stream_true_returns_text_event_stream() -> None:
             raise NotImplementedError
         async def stream_chat(self, request):  # type: ignore[no-untyped-def]
             from modelmeld.api.schemas import (
-                ChatCompletionChunk as _C, ChunkChoice as _CC, ChoiceDelta as _CD,
+                ChatCompletionChunk as _C,
+            )
+            from modelmeld.api.schemas import (
+                ChoiceDelta as _CD,
+            )
+            from modelmeld.api.schemas import (
+                ChunkChoice as _CC,
+            )
+            from modelmeld.api.schemas import (
                 Usage as _U,
             )
             yield _C(id="c1", object="chat.completion.chunk", created=1,
@@ -337,18 +343,17 @@ async def test_stream_true_returns_text_event_stream() -> None:
     app = build_app(adapter=_MiniStream())
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test",
-    ) as client:
-        async with client.stream("POST", "/v1/messages", json={
-            "model": "m",
-            "max_tokens": 64,
-            "stream": True,
-            "messages": [{"role": "user", "content": "x"}],
-        }) as resp:
-            assert resp.status_code == 200
-            assert "text/event-stream" in resp.headers.get("content-type", "")
-            # Drain so the connection closes cleanly
-            async for _ in resp.aiter_text():
-                pass
+    ) as client, client.stream("POST", "/v1/messages", json={
+        "model": "m",
+        "max_tokens": 64,
+        "stream": True,
+        "messages": [{"role": "user", "content": "x"}],
+    }) as resp:
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
+        # Drain so the connection closes cleanly
+        async for _ in resp.aiter_text():
+            pass
 
 
 # ---------------------------------------------------------------------------

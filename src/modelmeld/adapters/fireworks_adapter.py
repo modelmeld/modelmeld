@@ -17,7 +17,6 @@ import os
 from modelmeld.adapters.base import AdapterError
 from modelmeld.adapters.openai_adapter import OpenAIAdapter
 
-
 _FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1"
 
 

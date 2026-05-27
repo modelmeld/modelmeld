@@ -81,7 +81,7 @@ class ProviderAdapter(ABC):
     async def health(self) -> bool:
         """Cheap upstream reachability check. Returns False on failure."""
 
-    def serves_model(self, model_id: str) -> bool:  # noqa: ARG002 — base default
+    def serves_model(self, model_id: str) -> bool:
         """Whether this adapter can serve the given model id (F-8).
 
         Default returns True for both pinned and pass-through configurations:

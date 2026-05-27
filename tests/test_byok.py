@@ -9,8 +9,6 @@ to frontier providers, and those alias policies return 503.
 """
 from __future__ import annotations
 
-import pytest
-
 from modelmeld.api.byok import (
     BYOKCredentials,
     build_byok_adapters,
@@ -18,7 +16,6 @@ from modelmeld.api.byok import (
     extract_byok_credentials,
     redact_byok_headers,
 )
-
 
 # ---------------------------------------------------------------------------
 # extract_byok_credentials

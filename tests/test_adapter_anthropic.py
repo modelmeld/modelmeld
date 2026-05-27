@@ -12,7 +12,6 @@ from modelmeld.adapters.anthropic_adapter import AnthropicAdapter
 from modelmeld.adapters.base import AdapterError
 from modelmeld.api.schemas import ChatCompletionRequest
 
-
 # ---------------------------------------------------------------------------
 # Construction
 # ---------------------------------------------------------------------------
@@ -115,7 +114,7 @@ class _FakeStream:
     def __init__(self, events: list) -> None:
         self._events = events
 
-    def __aiter__(self) -> "_FakeStream":
+    def __aiter__(self) -> _FakeStream:
         self._i = iter(self._events)
         return self
 
@@ -321,6 +320,10 @@ async def test_chat_served_model_override_wins_over_native_request_model() -> No
     assert call_kwargs["model"] == "claude-opus-4-7"
 
 
+@pytest.mark.skipif(
+    not os.environ.get("ANTHROPIC_API_KEY"),
+    reason="Requires ANTHROPIC_API_KEY env var; gated integration test against the real Anthropic API.",
+)
 async def test_round_trip_against_real_anthropic() -> None:
     adapter = AnthropicAdapter()
     try:

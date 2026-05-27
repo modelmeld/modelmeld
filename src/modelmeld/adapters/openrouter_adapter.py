@@ -20,7 +20,6 @@ import os
 from modelmeld.adapters.base import AdapterError
 from modelmeld.adapters.openai_adapter import OpenAIAdapter
 
-
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 

@@ -22,7 +22,6 @@ from fastapi.testclient import TestClient
 
 from modelmeld.api.server import build_app
 
-
 _FORBIDDEN_MODULE_PREFIXES = (
     "sqlalchemy",
     "alembic",
@@ -85,12 +84,11 @@ def test_default_app_makes_no_database_connection_on_request() -> None:
                 attempts.append((str(host), port))
         return original_connect(self, address)
 
-    with patch.object(socket.socket, "connect", spy):
-        with TestClient(build_app()) as client:
-            response = client.post(
-                "/v1/chat/completions",
-                json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
-            )
+    with patch.object(socket.socket, "connect", spy), TestClient(build_app()) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+        )
     assert response.status_code == 200
     assert attempts == [], (
         f"core-engine reached out to {attempts}; it must not contact any DB/cache."

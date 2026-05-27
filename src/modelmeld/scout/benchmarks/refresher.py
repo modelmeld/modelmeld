@@ -134,7 +134,7 @@ class RegistryRefresher:
         for source in self.sources:
             try:
                 entries = await source.fetch()
-            except Exception as e:  # noqa: BLE001 — broad: per-source isolation
+            except Exception as e:
                 logger.exception("benchmark source failed: %s", source.name)
                 failures[source.name] = f"{type(e).__name__}: {e}"
                 continue
@@ -297,9 +297,7 @@ def _changed_fields(before: ModelEntry, after: ModelEntry) -> list[str]:
     for task in set(before.task_scores) | set(after.task_scores):
         b = before.task_scores.get(task)
         a = after.task_scores.get(task)
-        if b is None or a is None:
-            diffs.append(f"task_scores.{task}")
-        elif abs(b - a) > 1e-4:
+        if b is None or a is None or abs(b - a) > 1e-4:
             diffs.append(f"task_scores.{task}")
     return diffs
 

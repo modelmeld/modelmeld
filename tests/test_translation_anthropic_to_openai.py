@@ -38,7 +38,6 @@ from modelmeld.api.schemas_anthropic import (
 )
 from modelmeld.translation import TranslationError, from_anthropic_request
 
-
 # ---------------------------------------------------------------------------
 # Top-level fields
 # ---------------------------------------------------------------------------

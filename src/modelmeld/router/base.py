@@ -17,7 +17,6 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-
 from typing import TYPE_CHECKING
 
 from modelmeld.adapters.base import (
@@ -79,7 +78,7 @@ class Router(ABC):
     async def route(
         self,
         request: ChatCompletionRequest,
-        hints: "RoutingHints | None" = None,
+        hints: RoutingHints | None = None,
         extra_adapters: dict[str, ProviderAdapter] | None = None,
     ) -> RoutingDecision:
         """Return the routing decision for this request.
@@ -96,9 +95,9 @@ class Router(ABC):
     async def route_after_failure(
         self,
         failed: RoutingDecision,
-        request: ChatCompletionRequest,  # noqa: ARG002
-        error: AdapterError | None = None,  # noqa: ARG002
-        extra_adapters: dict[str, ProviderAdapter] | None = None,  # noqa: ARG002
+        request: ChatCompletionRequest,
+        error: AdapterError | None = None,
+        extra_adapters: dict[str, ProviderAdapter] | None = None,
     ) -> RoutingDecision | None:
         """Return a fallback decision after the primary adapter failed.
 
@@ -126,8 +125,8 @@ class SingleAdapterRouter(Router):
     async def route(
         self,
         request: ChatCompletionRequest,
-        hints: "RoutingHints | None" = None,  # noqa: ARG002 — ignored
-        extra_adapters: dict[str, ProviderAdapter] | None = None,  # noqa: ARG002
+        hints: RoutingHints | None = None,
+        extra_adapters: dict[str, ProviderAdapter] | None = None,
     ) -> RoutingDecision:
         return RoutingDecision(
             tier=Tier.CLOUD,  # nominal — single-adapter mode has no real tier
@@ -231,8 +230,8 @@ class TieredRouter(Router):
     async def route(
         self,
         request: ChatCompletionRequest,
-        hints: "RoutingHints | None" = None,  # noqa: ARG002 — tiered routing ignores hints
-        extra_adapters: dict[str, ProviderAdapter] | None = None,  # noqa: ARG002
+        hints: RoutingHints | None = None,
+        extra_adapters: dict[str, ProviderAdapter] | None = None,
     ) -> RoutingDecision:
         scout_decision: ScoutDecision | None = None
 

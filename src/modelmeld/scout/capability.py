@@ -135,7 +135,7 @@ class CapabilityDecision:
     devtool_fingerprint: Fingerprint | None = None
     rationale: str = ""
 
-    def with_model(self, model_id: str, provider: str, task_score: float) -> "CapabilityDecision":
+    def with_model(self, model_id: str, provider: str, task_score: float) -> CapabilityDecision:
         """Return a copy with a different chosen model (used during failover)."""
         return CapabilityDecision(
             chosen_model_id=model_id,
@@ -185,7 +185,7 @@ class CapabilityScout:
     async def choose(
         self,
         request: ChatCompletionRequest,
-        hints: "RoutingHints | None" = None,
+        hints: RoutingHints | None = None,
         available_frontier_providers: frozenset[str] | None = None,
     ) -> CapabilityDecision:
         """Pick the best (model, provider) for this request.

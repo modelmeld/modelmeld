@@ -91,17 +91,16 @@ def test_route_delegates_to_configured_adapter() -> None:
 
 def test_route_delegates_streaming_to_configured_adapter() -> None:
     adapter = RecordingAdapter()
-    with TestClient(build_app(adapter=adapter)) as client:
-        with client.stream(
-            "POST",
-            "/v1/chat/completions",
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": "ping"}],
-                "stream": True,
-            },
-        ) as response:
-            body = b"".join(response.iter_bytes()).decode("utf-8")
+    with TestClient(build_app(adapter=adapter)) as client, client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "ping"}],
+            "stream": True,
+        },
+    ) as response:
+        body = b"".join(response.iter_bytes()).decode("utf-8")
     assert "data: [DONE]" in body
     assert '"id":"chatcmpl-recorded"' in body
     assert len(adapter.calls) == 1

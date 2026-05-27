@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -28,32 +26,30 @@ def _parse_sse_events(body: str) -> list[str]:
 
 
 def test_streaming_response_content_type() -> None:
-    with TestClient(build_app()) as client:
-        with client.stream(
-            "POST",
-            "/v1/chat/completions",
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": "stream please"}],
-                "stream": True,
-            },
-        ) as response:
-            assert response.status_code == 200
-            assert "text/event-stream" in response.headers["content-type"]
+    with TestClient(build_app()) as client, client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "stream please"}],
+            "stream": True,
+        },
+    ) as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers["content-type"]
 
 
 def test_streaming_emits_role_then_content_then_finish() -> None:
-    with TestClient(build_app()) as client:
-        with client.stream(
-            "POST",
-            "/v1/chat/completions",
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": "hi"}],
-                "stream": True,
-            },
-        ) as response:
-            body = b"".join(response.iter_bytes()).decode("utf-8")
+    with TestClient(build_app()) as client, client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    ) as response:
+        body = b"".join(response.iter_bytes()).decode("utf-8")
 
     assert "data: [DONE]" in body
     events = _parse_sse_events(body)
@@ -70,18 +66,17 @@ def test_streaming_emits_role_then_content_then_finish() -> None:
 
 
 def test_streaming_with_include_usage_emits_usage_chunk() -> None:
-    with TestClient(build_app()) as client:
-        with client.stream(
-            "POST",
-            "/v1/chat/completions",
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": "hi"}],
-                "stream": True,
-                "stream_options": {"include_usage": True},
-            },
-        ) as response:
-            body = b"".join(response.iter_bytes()).decode("utf-8")
+    with TestClient(build_app()) as client, client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        },
+    ) as response:
+        body = b"".join(response.iter_bytes()).decode("utf-8")
 
     events = _parse_sse_events(body)
     chunks = [ChatCompletionChunk.model_validate_json(e) for e in events]
@@ -93,17 +88,16 @@ def test_streaming_with_include_usage_emits_usage_chunk() -> None:
 
 
 def test_streaming_chunks_parse_with_openai_sdk() -> None:
-    with TestClient(build_app()) as client:
-        with client.stream(
-            "POST",
-            "/v1/chat/completions",
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": "hi"}],
-                "stream": True,
-            },
-        ) as response:
-            body = b"".join(response.iter_bytes()).decode("utf-8")
+    with TestClient(build_app()) as client, client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    ) as response:
+        body = b"".join(response.iter_bytes()).decode("utf-8")
 
     events = _parse_sse_events(body)
     sdk_chunks = [OpenAIChunk.model_validate_json(e) for e in events]

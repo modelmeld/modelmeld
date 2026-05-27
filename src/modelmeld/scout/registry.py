@@ -17,11 +17,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
 from importlib import resources
 from pathlib import Path
-from typing import Mapping
 
 logger = logging.getLogger(__name__)
 _seed_warning_emitted = False
@@ -86,7 +85,7 @@ class ModelRegistry:
         self._by_id: dict[str, ModelEntry] = {e.model_id: e for e in entries}
 
     @classmethod
-    def from_json(cls, payload: dict) -> "ModelRegistry":
+    def from_json(cls, payload: dict) -> ModelRegistry:
         """Construct from the on-disk JSON format.
 
         Emits a one-time INFO log when the payload carries a
@@ -124,12 +123,12 @@ class ModelRegistry:
         return cls(entries)
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "ModelRegistry":
+    def from_file(cls, path: str | Path) -> ModelRegistry:
         with open(path, encoding="utf-8") as f:
             return cls.from_json(json.load(f))
 
     @classmethod
-    def load_default(cls) -> "ModelRegistry":
+    def load_default(cls) -> ModelRegistry:
         """Load the registry shipped with the package."""
         # importlib.resources finds the file inside the installed wheel.
         ref = resources.files("modelmeld.scout.data").joinpath("default_registry.json")

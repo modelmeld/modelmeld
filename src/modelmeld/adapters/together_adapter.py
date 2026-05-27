@@ -16,7 +16,6 @@ import os
 from modelmeld.adapters.base import AdapterError
 from modelmeld.adapters.openai_adapter import OpenAIAdapter
 
-
 _TOGETHER_BASE_URL = "https://api.together.xyz/v1"
 
 

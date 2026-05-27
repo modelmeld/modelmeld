@@ -11,7 +11,6 @@ from modelmeld.scout import (
     ModelEntry,
     ModelRegistry,
     NoEligibleModelError,
-    TaskCategoryClassifier,
 )
 
 

@@ -39,11 +39,11 @@ from modelmeld.api.schemas import (
     ResponseMessage,
     SystemMessage,
     TextPart,
+    Tool,
     ToolCall,
     ToolMessage,
-    Tool,
-    UserMessage,
     Usage,
+    UserMessage,
 )
 from modelmeld.api.schemas_anthropic import (
     AnthropicContentBlockDeltaEvent,
@@ -52,10 +52,10 @@ from modelmeld.api.schemas_anthropic import (
     AnthropicImageBlock,
     AnthropicMessage,
     AnthropicMessageDeltaEvent,
-    AnthropicMessageStartEvent,
-    AnthropicMessageStopEvent,
     AnthropicMessagesRequest,
     AnthropicMessagesResponse,
+    AnthropicMessageStartEvent,
+    AnthropicMessageStopEvent,
     AnthropicResponseContentBlock,
     AnthropicStopReason,
     AnthropicStreamEvent,
@@ -69,8 +69,6 @@ from modelmeld.api.schemas_anthropic import (
     AnthropicToolResultBlock,
     AnthropicToolUseBlock,
     AnthropicUsage,
-)
-from modelmeld.api.schemas_anthropic import (
     _ContentBlockStartTextShell,
     _ContentBlockStartToolUseShell,
     _InputJsonDelta,

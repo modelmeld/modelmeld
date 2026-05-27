@@ -9,7 +9,7 @@ from modelmeld.memory import (
     Role,
     assemble_context,
 )
-from modelmeld.tokens import CharBasedTokenCounter, TokenCounter
+from modelmeld.tokens import TokenCounter
 
 
 def _identity(mode: MemoryMode = MemoryMode.FULL) -> MemoryIdentity:

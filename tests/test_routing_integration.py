@@ -123,21 +123,20 @@ def test_always_local_policy_overrides_scout() -> None:
 
 
 def test_streaming_response_carries_routing_headers() -> None:
-    with TestClient(build_app(router=_tiered_router(Tier.LOCAL))) as client:
-        with client.stream(
-            "POST",
-            "/v1/chat/completions",
-            json={
-                "model": "m",
-                "messages": [{"role": "user", "content": "hi"}],
-                "stream": True,
-            },
-        ) as resp:
-            assert resp.headers["x-modelmeld-tier"] == "local"
-            assert resp.headers["x-modelmeld-routed-to"] == "local-fake"
-            # Consume the body so the connection closes cleanly
-            for _ in resp.iter_bytes():
-                pass
+    with TestClient(build_app(router=_tiered_router(Tier.LOCAL))) as client, client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": "m",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    ) as resp:
+        assert resp.headers["x-modelmeld-tier"] == "local"
+        assert resp.headers["x-modelmeld-routed-to"] == "local-fake"
+        # Consume the body so the connection closes cleanly
+        for _ in resp.iter_bytes():
+            pass
 
 
 def test_no_healthy_adapter_returns_503() -> None:

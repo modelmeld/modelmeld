@@ -5,19 +5,16 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import httpx
-import pytest
 
 from modelmeld.adapters.base import ProviderAdapter
 from modelmeld.api.schemas import (
     ChatCompletion,
     ChatCompletionChunk,
     ChatCompletionRequest,
+    Choice,
     ChoiceDelta,
     ChunkChoice,
-    Choice,
-    FunctionDef,
     ResponseMessage,
-    Tool,
     Usage,
 )
 from modelmeld.api.server import build_app

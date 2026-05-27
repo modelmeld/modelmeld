@@ -14,7 +14,6 @@ from modelmeld.translation.openai_anthropic import (
     to_anthropic_params,
 )
 
-
 # ---------------------------------------------------------------------------
 # Request translation: OpenAI → Anthropic
 # ---------------------------------------------------------------------------

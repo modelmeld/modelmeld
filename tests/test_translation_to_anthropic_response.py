@@ -30,7 +30,6 @@ from modelmeld.api.schemas_anthropic import (
 )
 from modelmeld.translation import TranslationError, to_anthropic_response
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

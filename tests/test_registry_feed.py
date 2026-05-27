@@ -6,7 +6,6 @@ import base64
 import json
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import httpx
 import pytest
@@ -18,7 +17,6 @@ from modelmeld.scout.feed import (
     SIGNATURE_HEADER,
     SUPPORTED_SCHEMA_VERSIONS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures: keypair + canned envelope

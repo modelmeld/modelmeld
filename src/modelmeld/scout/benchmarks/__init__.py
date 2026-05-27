@@ -39,16 +39,16 @@ from modelmeld.scout.benchmarks.refresher import (
 )
 
 __all__ = [
+    "DEFAULT_SOURCE_WEIGHTS",
+    "TASK_BENCHMARK_MAP",
     "AiderPolyglotFetcher",
     "ArtificialAnalysisFetcher",
     "BenchmarkSource",
-    "DEFAULT_SOURCE_WEIGHTS",
     "LMArenaFetcher",
     "LiveBenchFetcher",
     "ModelDelta",
     "RegistryRefresher",
     "RegistryUpdate",
-    "TASK_BENCHMARK_MAP",
     "canonicalize_model_id",
     "normalize_aa_model",
     "render_update_log",

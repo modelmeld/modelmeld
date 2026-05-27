@@ -12,8 +12,8 @@ from modelmeld.api.schemas import (
     ChatCompletionChunk,
     ChatCompletionRequest,
     Choice,
-    ChunkChoice,
     ChoiceDelta,
+    ChunkChoice,
     ResponseMessage,
     Usage,
 )
@@ -169,16 +169,15 @@ async def test_streaming_accumulates_assistant_text_then_writes() -> None:
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        async with client.stream(
-            "POST", "/v1/chat/completions",
-            json={"model": "stub", "stream": True,
-                  "messages": [{"role": "user", "content": "streaming?"}]},
-            headers={HEADER_SESSION_ID: "stream-1"},
-        ) as resp:
-            assert resp.status_code == 200
-            async for _ in resp.aiter_lines():
-                pass
+    ) as client, client.stream(
+        "POST", "/v1/chat/completions",
+        json={"model": "stub", "stream": True,
+              "messages": [{"role": "user", "content": "streaming?"}]},
+        headers={HEADER_SESSION_ID: "stream-1"},
+    ) as resp:
+        assert resp.status_code == 200
+        async for _ in resp.aiter_lines():
+            pass
 
     turns = await store.list_turns("stream-1", ANONYMOUS_TENANT_ID)
     assert len(turns) == 2

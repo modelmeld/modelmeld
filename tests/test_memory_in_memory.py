@@ -15,7 +15,6 @@ from modelmeld.memory import (
     Turn,
 )
 
-
 # ---------------------------------------------------------------------------
 # Session lifecycle
 # ---------------------------------------------------------------------------
@@ -150,7 +149,7 @@ async def test_set_fact_upserts_same_key() -> None:
     store = InMemoryMemoryStore()
     await store.get_or_create_session("s", "acme")
     first = await store.set_fact("s", "acme", "favorite_lang", "Python")
-    second = await store.set_fact("s", "acme", "favorite_lang", "Rust")
+    await store.set_fact("s", "acme", "favorite_lang", "Rust")
     facts = await store.get_facts("s", "acme")
     assert len(facts) == 1
     assert facts[0].value == "Rust"

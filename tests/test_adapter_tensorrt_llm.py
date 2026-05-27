@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 from unittest.mock import AsyncMock
 
@@ -13,7 +14,6 @@ from modelmeld.adapters.tensorrt_llm_adapter import TensorRTLLMAdapter
 from modelmeld.adapters.vllm_adapter import VLLMAdapter
 from modelmeld.api.schemas import ChatCompletionRequest
 from tests.fixtures.openai_responses import SIMPLE_TEXT
-
 
 # ---------------------------------------------------------------------------
 # Endpoint resolution + construction
@@ -175,14 +175,10 @@ async def test_parity_preserved_under_streaming_flag() -> None:
     # Open + close both streams (we don't iterate; just exercising the call)
     a1 = vllm.stream_chat(request).__aiter__()
     a2 = trtllm.stream_chat(request).__aiter__()
-    try:
+    with contextlib.suppress(StopAsyncIteration):
         await a1.__anext__()
-    except StopAsyncIteration:
-        pass
-    try:
+    with contextlib.suppress(StopAsyncIteration):
         await a2.__anext__()
-    except StopAsyncIteration:
-        pass
 
     assert vllm_capture == trtllm_capture
     assert vllm_capture["stream"] is True

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -12,8 +13,6 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-
-import logging
 
 from modelmeld.adapters import AdapterError, ProviderAdapter
 from modelmeld.api._safe_error_detail import safe_error_detail
@@ -23,8 +22,14 @@ from modelmeld.api.byok import (
 )
 from modelmeld.api.routing_hints import (
     RoutingHintError,
-    RoutingHints,
     extract_hints_from_headers,
+)
+from modelmeld.api.schemas import (
+    ChatCompletion,
+    ChatCompletionChunk,
+    ChatCompletionRequest,
+    TextPart,
+    UserMessage,
 )
 from modelmeld.cache import (
     DEFAULT_CACHE_TTL_SECONDS,
@@ -34,16 +39,6 @@ from modelmeld.cache import (
     cache_key_for_request,
     canonicalize_request_text,
     is_request_semantically_cacheable,
-)
-from modelmeld.api.schemas import (
-    AssistantMessage,
-    ChatCompletion,
-    ChatCompletionChunk,
-    ChatCompletionRequest,
-    SystemMessage,
-    TextPart,
-    ToolMessage,
-    UserMessage,
 )
 from modelmeld.hooks import (
     HookRegistry,
@@ -528,7 +523,7 @@ async def _sse_stream(
                 accumulated_text.extend(_chunk_text_pieces(chunk))
                 if chunk.usage is not None:
                     last_usage = chunk.usage
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         error = e
     yield "data: [DONE]\n\n"
 
@@ -669,7 +664,7 @@ async def _append_request_response_turns(
             token_count=assistant_tokens,
             model_used=model_used,
         )
-    except Exception:  # noqa: BLE001 — memory writes are best-effort
+    except Exception:
         logger.exception("memory write failed for session %s", mem_identity.session_id)
 
 
@@ -710,7 +705,7 @@ def _extract_completion_text(completion: ChatCompletion) -> str:
                 pieces.append(msg.content)
             else:
                 pieces.extend(
-                    part.text for part in msg.content if isinstance(part, TextPart)
+                    part.text for part in msg.content if isinstance(part, TextPart)  # pyright: ignore[reportGeneralTypeIssues]
                 )
     return "".join(pieces)
 

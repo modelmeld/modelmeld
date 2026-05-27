@@ -25,8 +25,8 @@ and Claude Code injects that header on every request to our gateway.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Iterable, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -89,10 +89,7 @@ def extract_byok_credentials(headers: Iterable[tuple[str, str]] | Mapping[str, s
     """
     keys: dict[str, str] = {}
     items: Iterable[tuple[str, str]]
-    if isinstance(headers, Mapping):
-        items = headers.items()
-    else:
-        items = headers
+    items = headers.items() if isinstance(headers, Mapping) else headers  # pyright: ignore[reportAssignmentType]
     for name, value in items:
         name_lower = name.lower()
         if not name_lower.startswith(_HEADER_PREFIX):
@@ -111,10 +108,7 @@ def redact_byok_headers(
 ) -> list[tuple[str, str]]:
     """Return headers with BYOK values redacted (for log/audit dumps)."""
     items: Iterable[tuple[str, str]]
-    if isinstance(headers, Mapping):
-        items = headers.items()
-    else:
-        items = headers
+    items = headers.items() if isinstance(headers, Mapping) else headers  # pyright: ignore[reportAssignmentType]
     out: list[tuple[str, str]] = []
     for name, value in items:
         name_lower = name.lower()
@@ -143,7 +137,7 @@ def eligible_providers() -> frozenset[str]:
     return _BYOK_ELIGIBLE_PROVIDERS
 
 
-def build_byok_adapters(creds: BYOKCredentials) -> dict[str, "ProviderAdapter"]:
+def build_byok_adapters(creds: BYOKCredentials) -> dict[str, ProviderAdapter]:
     """Construct per-request adapter instances using the supplied BYOK keys.
 
     Returns an empty dict when creds is empty. Caller is responsible for
@@ -168,7 +162,7 @@ def build_byok_adapters(creds: BYOKCredentials) -> dict[str, "ProviderAdapter"]:
             elif provider == "openai":
                 from modelmeld.adapters.openai_adapter import OpenAIAdapter
                 out[provider] = OpenAIAdapter(api_key=key)
-        except Exception:  # noqa: BLE001 — never let BYOK construction crash the route
+        except Exception:
             # Use logger.error (not logger.exception) to avoid emitting
             # a traceback whose locals frame would include the `key`
             # variable. Defense in depth — the SDK constructors don't
@@ -195,8 +189,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BYOKCredentials",
+    "build_byok_adapters",
+    "eligible_providers",
     "extract_byok_credentials",
     "redact_byok_headers",
-    "eligible_providers",
-    "build_byok_adapters",
 ]

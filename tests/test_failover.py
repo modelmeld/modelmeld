@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-import pytest
 from fastapi.testclient import TestClient
 
 from modelmeld.adapters.base import AdapterError, ProviderAdapter
@@ -160,15 +159,14 @@ def test_stream_failover_on_primary_open_error() -> None:
         adapters={Tier.LOCAL: local, Tier.CLOUD: cloud},
         health_ttl_sec=0.0,
     )
-    with TestClient(build_app(router=router)) as client:
-        with client.stream(
-            "POST",
-            "/v1/chat/completions",
-            json={**_payload(), "stream": True},
-        ) as resp:
-            assert resp.headers["x-modelmeld-routed-to"] == "cloud-ok"
-            assert resp.headers["x-modelmeld-failover-from"] == "local"
-            body = b"".join(resp.iter_bytes()).decode("utf-8")
+    with TestClient(build_app(router=router)) as client, client.stream(
+        "POST",
+        "/v1/chat/completions",
+        json={**_payload(), "stream": True},
+    ) as resp:
+        assert resp.headers["x-modelmeld-routed-to"] == "cloud-ok"
+        assert resp.headers["x-modelmeld-failover-from"] == "local"
+        body = b"".join(resp.iter_bytes()).decode("utf-8")
     assert "data: [DONE]" in body
     assert local.stream_calls == 1
     assert cloud.stream_calls == 1

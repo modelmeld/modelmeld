@@ -19,6 +19,7 @@ from modelmeld.scout.capability import (
     CapabilityScout,
     NoEligibleModelError,
 )
+from modelmeld.scout.devtool import DevTool, Fingerprint, Fingerprinter
 from modelmeld.scout.feed import (
     DEFAULT_CACHE_TTL_SEC,
     DEFAULT_TIMEOUT_SEC,
@@ -27,7 +28,6 @@ from modelmeld.scout.feed import (
     FeedFetchResult,
     RegistryFeedClient,
 )
-from modelmeld.scout.devtool import DevTool, Fingerprint, Fingerprinter
 from modelmeld.scout.heuristics import HeuristicScout
 from modelmeld.scout.registry import ModelEntry, ModelRegistry, default_registry
 from modelmeld.scout.task_category import (
@@ -55,10 +55,13 @@ def build_scout(settings: object) -> Scout:
 
 
 __all__ = [
-    "CapabilityDecision",
-    "CapabilityScout",
     "DEFAULT_CACHE_TTL_SEC",
     "DEFAULT_TIMEOUT_SEC",
+    "SIGNATURE_HEADER",
+    "SUPPORTED_SCHEMA_VERSIONS",
+    "TASK_CATEGORIES",
+    "CapabilityDecision",
+    "CapabilityScout",
     "DevTool",
     "FeedFetchResult",
     "Fingerprint",
@@ -68,11 +71,8 @@ __all__ = [
     "ModelRegistry",
     "NoEligibleModelError",
     "RegistryFeedClient",
-    "SIGNATURE_HEADER",
-    "SUPPORTED_SCHEMA_VERSIONS",
     "Scout",
     "ScoutDecision",
-    "TASK_CATEGORIES",
     "TaskCategoryClassifier",
     "TaskCategoryDecision",
     "Tier",

@@ -1,0 +1,38 @@
+# gitleaks configuration for modelmeld
+#
+# Inherits the gitleaks built-in detection rules and adds an allowlist
+# for tests/ fixtures that deliberately contain credential-shaped strings.
+# Those fixtures exist to verify our PII scrubber + BYOK handling — they
+# must contain credential patterns so the tests can confirm they get
+# scrubbed/handled correctly.
+#
+# Used by .github/workflows/security.yml via GITLEAKS_CONFIG env var.
+
+title = "modelmeld gitleaks config"
+
+[extend]
+# Pull in the gitleaks built-in ruleset (sk-ant-, sk-, ghp_, AKIA, etc.)
+useDefault = true
+
+[allowlist]
+description = "Synthetic credential fixtures for PII scrubber + BYOK tests"
+
+# Allow the entire test files that exercise credential-shape handling.
+# These files exist specifically to test that we detect / scrub /
+# redact credentials — they MUST contain credential patterns.
+paths = [
+    '''tests/test_byok\.py''',
+    '''tests/test_privacy_scrubber\.py''',
+]
+
+# Belt-and-suspenders: also allowlist the specific synthetic strings
+# in case they appear elsewhere (e.g., in docs explaining the scrubber).
+# All of these are documented test placeholders — AKIAIOSFODNN7EXAMPLE
+# is AWS's own published example ID, not a real credential.
+regexes = [
+    '''sk-ant-api03-LONGSECRET12345''',
+    '''sk-ant-api03-a{10,}''',
+    '''sk-a{20,}''',
+    '''AKIAIOSFODNN7EXAMPLE''',
+    '''ghp_abcdefghijklmnopqrstuvwxyz0123456789''',
+]

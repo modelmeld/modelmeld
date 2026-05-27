@@ -15,8 +15,6 @@ Locks in three properties:
 
 from __future__ import annotations
 
-import pytest
-
 from modelmeld.api.schemas import (
     ChatCompletionRequest,
     UserMessage,
@@ -38,7 +36,6 @@ from modelmeld.scout.task_category import (
     TaskCategoryClassifier,
     TaskCategoryWeights,
 )
-
 
 # ---------------------------------------------------------------------------
 # Default values frozen at known-good production tunings

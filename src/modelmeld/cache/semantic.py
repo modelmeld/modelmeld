@@ -129,6 +129,4 @@ def is_request_semantically_cacheable(request: ChatCompletionRequest) -> bool:
         return False
     if request.tools:
         return False
-    if request.n is not None and request.n > 1:
-        return False
-    return True
+    return not (request.n is not None and request.n > 1)

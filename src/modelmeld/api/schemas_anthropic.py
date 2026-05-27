@@ -23,7 +23,6 @@ from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ---------------------------------------------------------------------------
 # Cache control (accepted but ignored in v1)
 # ---------------------------------------------------------------------------
@@ -57,7 +56,7 @@ class AnthropicImageSourceUrl(BaseModel):
 
 
 AnthropicImageSource = Annotated[
-    Union[AnthropicImageSourceBase64, AnthropicImageSourceUrl],
+    AnthropicImageSourceBase64 | AnthropicImageSourceUrl,
     Field(discriminator="type"),
 ]
 
@@ -102,19 +101,14 @@ class AnthropicToolResultBlock(BaseModel):
 # Discriminated union of all content block types a CLIENT may send in
 # request messages. (Response blocks are a narrower set — see below.)
 AnthropicRequestContentBlock = Annotated[
-    Union[
-        AnthropicTextBlock,
-        AnthropicImageBlock,
-        AnthropicToolUseBlock,
-        AnthropicToolResultBlock,
-    ],
+    AnthropicTextBlock | AnthropicImageBlock | AnthropicToolUseBlock | AnthropicToolResultBlock,
     Field(discriminator="type"),
 ]
 
 
 # Narrower union for response content: text + tool_use only.
 AnthropicResponseContentBlock = Annotated[
-    Union[AnthropicTextBlock, AnthropicToolUseBlock],
+    AnthropicTextBlock | AnthropicToolUseBlock,
     Field(discriminator="type"),
 ]
 
@@ -167,12 +161,7 @@ class AnthropicToolChoiceNone(BaseModel):
 
 
 AnthropicToolChoice = Annotated[
-    Union[
-        AnthropicToolChoiceAuto,
-        AnthropicToolChoiceAny,
-        AnthropicToolChoiceSpecific,
-        AnthropicToolChoiceNone,
-    ],
+    AnthropicToolChoiceAuto | AnthropicToolChoiceAny | AnthropicToolChoiceSpecific | AnthropicToolChoiceNone,
     Field(discriminator="type"),
 ]
 
@@ -299,7 +288,7 @@ class _ContentBlockStartToolUseShell(BaseModel):
 
 
 _ContentBlockStartShell = Annotated[
-    Union[_ContentBlockStartTextShell, _ContentBlockStartToolUseShell],
+    _ContentBlockStartTextShell | _ContentBlockStartToolUseShell,
     Field(discriminator="type"),
 ]
 
@@ -321,7 +310,7 @@ class _InputJsonDelta(BaseModel):
 
 
 _ContentBlockDelta = Annotated[
-    Union[_TextDelta, _InputJsonDelta],
+    _TextDelta | _InputJsonDelta,
     Field(discriminator="type"),
 ]
 
@@ -364,55 +353,47 @@ class AnthropicPingEvent(BaseModel):
 
 
 AnthropicStreamEvent = Annotated[
-    Union[
-        AnthropicMessageStartEvent,
-        AnthropicContentBlockStartEvent,
-        AnthropicContentBlockDeltaEvent,
-        AnthropicContentBlockStopEvent,
-        AnthropicMessageDeltaEvent,
-        AnthropicMessageStopEvent,
-        AnthropicPingEvent,
-    ],
+    AnthropicMessageStartEvent | AnthropicContentBlockStartEvent | AnthropicContentBlockDeltaEvent | AnthropicContentBlockStopEvent | AnthropicMessageDeltaEvent | AnthropicMessageStopEvent | AnthropicPingEvent,
     Field(discriminator="type"),
 ]
 
 
 __all__ = [
-    # Request
-    "AnthropicMessagesRequest",
-    "AnthropicMessage",
-    "AnthropicSystemPrompt",
-    "AnthropicMetadata",
-    # Content blocks
-    "AnthropicTextBlock",
+    # Misc
+    "AnthropicCacheControl",
+    "AnthropicContentBlockDeltaEvent",
+    "AnthropicContentBlockStartEvent",
+    "AnthropicContentBlockStopEvent",
     "AnthropicImageBlock",
     "AnthropicImageSource",
     "AnthropicImageSourceBase64",
     "AnthropicImageSourceUrl",
-    "AnthropicToolUseBlock",
-    "AnthropicToolResultBlock",
-    "AnthropicRequestContentBlock",
-    "AnthropicResponseContentBlock",
-    # Tools
-    "AnthropicToolDef",
-    "AnthropicToolChoice",
-    "AnthropicToolChoiceAuto",
-    "AnthropicToolChoiceAny",
-    "AnthropicToolChoiceSpecific",
-    "AnthropicToolChoiceNone",
+    "AnthropicMessage",
+    "AnthropicMessageDeltaEvent",
+    "AnthropicMessageStartEvent",
+    "AnthropicMessageStopEvent",
+    # Request
+    "AnthropicMessagesRequest",
     # Response
     "AnthropicMessagesResponse",
+    "AnthropicMetadata",
+    "AnthropicPingEvent",
+    "AnthropicRequestContentBlock",
+    "AnthropicResponseContentBlock",
     "AnthropicStopReason",
-    "AnthropicUsage",
     # Stream events
     "AnthropicStreamEvent",
-    "AnthropicMessageStartEvent",
-    "AnthropicContentBlockStartEvent",
-    "AnthropicContentBlockDeltaEvent",
-    "AnthropicContentBlockStopEvent",
-    "AnthropicMessageDeltaEvent",
-    "AnthropicMessageStopEvent",
-    "AnthropicPingEvent",
-    # Misc
-    "AnthropicCacheControl",
+    "AnthropicSystemPrompt",
+    # Content blocks
+    "AnthropicTextBlock",
+    "AnthropicToolChoice",
+    "AnthropicToolChoiceAny",
+    "AnthropicToolChoiceAuto",
+    "AnthropicToolChoiceNone",
+    "AnthropicToolChoiceSpecific",
+    # Tools
+    "AnthropicToolDef",
+    "AnthropicToolResultBlock",
+    "AnthropicToolUseBlock",
+    "AnthropicUsage",
 ]

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import random
-from dataclasses import dataclass
 
 import pytest
 
@@ -14,14 +13,13 @@ from modelmeld.adapters.base import (
     TransientAdapterError,
 )
 from modelmeld.adapters.retry import (
-    RetryConfig,
     TRANSIENT_STATUS_CODES,
+    RetryConfig,
     _compute_backoff,
     is_transient_error,
     retry_async,
     wrap_as_adapter_error,
 )
-
 
 # ---------------------------------------------------------------------------
 # Synthetic exception types that mimic provider SDK shapes

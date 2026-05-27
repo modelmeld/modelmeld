@@ -24,11 +24,11 @@ import pytest
 
 from modelmeld.memory import (
     ANONYMOUS_TENANT_ID,
+    QDRANT_COLLECTION_PREFIX,
     InMemoryMemoryStore,
     InvalidTenantIdError,
     MemoryIdentity,
     MemoryMode,
-    QDRANT_COLLECTION_PREFIX,
     Role,
     SummarizerConfig,
     SummarizerWorker,
@@ -36,7 +36,6 @@ from modelmeld.memory import (
     tenant_collection_name,
     validate_tenant_id,
 )
-
 
 # ===========================================================================
 # tenant_id validation
@@ -356,7 +355,6 @@ def test_qdrant_name_short_tenant_id_inlined() -> None:
 
 
 def test_qdrant_name_long_tenant_id_hashed() -> None:
-    long_id = "x" * 100  # exceeds 128? no, 100 is ok. Use a different long valid one
     long_valid = "tenant-" + "a" * 100   # 107 chars, passes regex
     name = tenant_collection_name(long_valid)
     assert name.startswith(QDRANT_COLLECTION_PREFIX)

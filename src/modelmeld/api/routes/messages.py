@@ -33,31 +33,25 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from modelmeld.adapters import AdapterError
 from modelmeld.adapters.anthropic_adapter import AnthropicAdapter
 from modelmeld.api._safe_error_detail import safe_error_detail
+from modelmeld.api.byok import (
+    build_byok_adapters,
+    extract_byok_credentials,
+)
 from modelmeld.api.routes.chat import (
     _apply_model_override,
     _auth_identity,
-    _build_event,
+    _byok_required_detail,
     _chunk_content_tokens,
     _chunk_text_pieces,
     _count_tokens,
     _fire_failure,
     _fire_success,
     _fire_success_stream,
-    _last_user_turn,
+    _is_byok_required_error,
     _maybe_scrub,
-    _prompt_hash,
     _routing_headers,
-    _try_open_stream,
     _write_memory_turns,
     _write_memory_turns_streaming,
-)
-from modelmeld.api.byok import (
-    build_byok_adapters,
-    extract_byok_credentials,
-)
-from modelmeld.api.routes.chat import (
-    _byok_required_detail,
-    _is_byok_required_error,
 )
 from modelmeld.api.routing_hints import (
     RoutingHintError,
@@ -713,7 +707,7 @@ async def _sse_anthropic_stream(
             yield format_anthropic_sse(event)
         # NOTE: Anthropic SSE does NOT use a `data: [DONE]` terminator like
         # OpenAI. The `message_stop` event itself signals completion.
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         error = e
 
     if error is None:

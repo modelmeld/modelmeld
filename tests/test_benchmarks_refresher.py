@@ -100,7 +100,7 @@ def test_diff_added_models() -> None:
 def test_diff_removed_models() -> None:
     cur = ModelRegistry([_entry("a"), _entry("b"), _entry("c")])
     new = ModelRegistry([_entry("a")])
-    added, removed, updated = _diff(cur, new)
+    added, removed, _updated = _diff(cur, new)
     assert added == []
     assert sorted(e.model_id for e in removed) == ["b", "c"]
 
@@ -200,8 +200,9 @@ async def test_refresh_requires_fetcher() -> None:
 # ---------------------------------------------------------------------------
 
 def test_render_update_log_contains_counts() -> None:
-    from modelmeld.scout.benchmarks.refresher import RegistryUpdate
     from datetime import datetime, timezone
+
+    from modelmeld.scout.benchmarks.refresher import RegistryUpdate
 
     update = RegistryUpdate(
         new_registry=ModelRegistry([_entry("a")]),

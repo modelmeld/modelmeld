@@ -8,7 +8,6 @@ from modelmeld.api.schemas import (
     AssistantMessage,
     ChatCompletionRequest,
     SystemMessage,
-    TextPart,
     UserMessage,
 )
 from modelmeld.privacy import RegexScrubber

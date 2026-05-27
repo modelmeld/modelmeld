@@ -33,7 +33,6 @@ from modelmeld.cli.setup import (
     _write_claude_code_env_script,
 )
 
-
 # ---------------------------------------------------------------------------
 # Input normalization — the #1 hours-burner footgun
 # ---------------------------------------------------------------------------

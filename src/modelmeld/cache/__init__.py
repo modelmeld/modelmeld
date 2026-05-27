@@ -43,11 +43,11 @@ from modelmeld.cache.semantic import (
 
 __all__ = [
     "CACHE_KEY_VERSION",
-    "CacheLookup",
-    "CompletionCache",
     "DEFAULT_CACHE_TTL_SECONDS",
     "DEFAULT_MAX_ENTRIES",
     "DEFAULT_SIMILARITY_THRESHOLD",
+    "CacheLookup",
+    "CompletionCache",
     "EmbeddingClient",
     "HashedBagOfWordsEmbedder",
     "InMemoryCompletionCache",

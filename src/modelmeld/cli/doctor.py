@@ -27,7 +27,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Color + glyph output — reuses the setup module's pattern
 # ---------------------------------------------------------------------------
@@ -106,7 +105,7 @@ def _check_env_vars() -> list[CheckResult]:
         if value != value.strip():
             results.append(CheckResult(
                 f"Env var {name}", False,
-                f"has leading/trailing whitespace",
+                "has leading/trailing whitespace",
                 fix=f"re-export trimmed: `export {name}={value.strip()}`",
             ))
             continue
@@ -176,7 +175,7 @@ def _check_cache_file(base_url: str | None) -> list[CheckResult]:
         return results
     try:
         raw = cache_path.read_bytes()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         results.append(CheckResult(
             "Claude Code cache file", False, f"unreadable: {e}",
             fix=f"check file permissions on {cache_path}",
@@ -303,7 +302,7 @@ def _check_gateway_reachability(base_url: str, api_key: str) -> list[CheckResult
                 "Auth check (/v1/models)", False, f"HTTP {e.code}: {body[:100]}",
             ))
         return results
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         results.append(CheckResult(
             "Auth check (/v1/models)", False, f"{type(e).__name__}: {e}",
         ))
@@ -347,7 +346,7 @@ def _check_gateway_reachability(base_url: str, api_key: str) -> list[CheckResult
             fix="check your balance via GET /v1/account/balance — if 0, top up",
         ))
         return results
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         results.append(CheckResult(
             "OSS routing roundtrip (-saver)", False, f"{type(e).__name__}: {e}",
         ))
@@ -421,7 +420,7 @@ def _check_gateway_reachability(base_url: str, api_key: str) -> list[CheckResult
                 "BYOK frontier roundtrip (-quality)", False,
                 f"HTTP {e.code}: {body_text[:200]}",
             ))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         results.append(CheckResult(
             "BYOK frontier roundtrip (-quality)", False, f"{type(e).__name__}: {e}",
         ))

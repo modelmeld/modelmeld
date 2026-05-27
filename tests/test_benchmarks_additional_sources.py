@@ -7,8 +7,8 @@ import pytest
 
 from modelmeld.scout.benchmarks import (
     AiderPolyglotFetcher,
-    LMArenaFetcher,
     LiveBenchFetcher,
+    LMArenaFetcher,
 )
 from modelmeld.scout.benchmarks.aider_polyglot import AiderPolyglotError
 from modelmeld.scout.benchmarks.livebench import LiveBenchError

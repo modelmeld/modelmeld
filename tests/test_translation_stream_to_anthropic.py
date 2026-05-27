@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from modelmeld.api.schemas import (
     ChatCompletionChunk,
     ChoiceDelta,
@@ -44,7 +42,6 @@ from modelmeld.translation import (
     OpenAIToAnthropicStreamTranslator,
     format_anthropic_sse,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

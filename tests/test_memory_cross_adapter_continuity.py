@@ -56,7 +56,6 @@ from modelmeld.memory import (
 from modelmeld.router import RoutingPolicy, TieredRouter
 from modelmeld.scout.base import Scout, ScoutDecision, Tier
 
-
 # ---------------------------------------------------------------------------
 # Test doubles
 # ---------------------------------------------------------------------------

@@ -99,7 +99,7 @@ async def assemble_context(
             )
         else:
             recent = []
-    except Exception:  # noqa: BLE001 — memory reads are best-effort
+    except Exception:
         logger.exception(
             "memory read failed for session %s (degraded; proceeding without context)",
             mem_identity.session_id,

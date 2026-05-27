@@ -71,7 +71,7 @@ class _FakeAsyncStream:
     def __init__(self, chunks: list[SDKChatCompletionChunk]) -> None:
         self._chunks = chunks
 
-    def __aiter__(self) -> "_FakeAsyncStream":
+    def __aiter__(self) -> _FakeAsyncStream:
         self._iter = iter(self._chunks)
         return self
 

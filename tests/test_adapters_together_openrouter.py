@@ -19,7 +19,6 @@ from modelmeld.adapters import (
 )
 from modelmeld.adapters.base import AdapterError
 
-
 # ---------------------------------------------------------------------------
 # TogetherAdapter
 # ---------------------------------------------------------------------------

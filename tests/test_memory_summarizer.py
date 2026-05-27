@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import pytest
@@ -18,7 +17,6 @@ from modelmeld.api.schemas import (
 from modelmeld.memory import (
     InMemoryMemoryStore,
     Role,
-    Summary,
     SummarizerConfig,
     SummarizerWorker,
     adapter_summarize_call,
@@ -26,7 +24,6 @@ from modelmeld.memory import (
     run_for_pending_sessions,
     sanitize_summary,
 )
-
 
 # ---------------------------------------------------------------------------
 # build_summarizer_prompt — prompt-injection defense
@@ -256,7 +253,6 @@ async def test_llm_exception_propagates() -> None:
 
 async def test_run_once_retries_on_version_mismatch() -> None:
     """A concurrent writer bumps the version mid-flight; the worker refetches + retries."""
-    from modelmeld.memory.base import SummaryVersionMismatch
 
     store = InMemoryMemoryStore()
     await store.get_or_create_session("s", "acme")
@@ -360,9 +356,8 @@ async def test_driver_counts_updates_skips_and_failures() -> None:
 # ---------------------------------------------------------------------------
 
 async def test_adapter_summarize_call_invokes_adapter_with_summarizer_prompt() -> None:
-    from collections.abc import AsyncIterator
     from modelmeld.adapters.base import ProviderAdapter
-    from modelmeld.api.schemas import ChatCompletionRequest, ChatCompletionChunk
+    from modelmeld.api.schemas import ChatCompletionRequest
 
     captured: dict[str, Any] = {}
 

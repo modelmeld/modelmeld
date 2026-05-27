@@ -111,10 +111,7 @@ def _build_capability_router(settings: object, model_registry: object | None) ->
     from modelmeld.scout.registry import ModelRegistry, default_registry
 
     registry: ModelRegistry
-    if isinstance(model_registry, ModelRegistry):
-        registry = model_registry
-    else:
-        registry = default_registry()
+    registry = model_registry if isinstance(model_registry, ModelRegistry) else default_registry()
 
     eligible_list = getattr(settings, "capability_eligible_providers", None)
     eligible_providers = frozenset(eligible_list) if eligible_list else None

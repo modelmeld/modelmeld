@@ -12,13 +12,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from modelmeld.cli.doctor import (
     _check_cache_file,
     _check_env_vars,
 )
-
 
 # ---------------------------------------------------------------------------
 # Env-var checks

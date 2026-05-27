@@ -91,4 +91,4 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     """Cosine of the angle between `a` and `b`. Both should be unit-length."""
     if len(a) != len(b):
         raise ValueError(f"dim mismatch: {len(a)} vs {len(b)}")
-    return sum(x * y for x, y in zip(a, b))
+    return sum(x * y for x, y in zip(a, b, strict=False))

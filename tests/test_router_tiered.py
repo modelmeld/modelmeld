@@ -22,7 +22,6 @@ from modelmeld.router import (
 )
 from modelmeld.scout.base import Scout, ScoutDecision, Tier
 
-
 # ---------------------------------------------------------------------------
 # Test doubles
 # ---------------------------------------------------------------------------
@@ -240,7 +239,7 @@ async def test_close_dedupes_same_adapter() -> None:
 # F-2: Transient vs permanent error classification in route_after_failure
 # ---------------------------------------------------------------------------
 
-from modelmeld.adapters.base import (  # noqa: E402
+from modelmeld.adapters.base import (
     AdapterError,
     PermanentAdapterError,
     TransientAdapterError,

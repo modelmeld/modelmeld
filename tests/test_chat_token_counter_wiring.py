@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-
 import httpx
 
 from modelmeld.adapters.base import ProviderAdapter
 from modelmeld.api.schemas import (
     ChatCompletion,
-    ChatCompletionChunk,
     ChatCompletionRequest,
     Choice,
     ResponseMessage,

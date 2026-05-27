@@ -8,17 +8,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from modelmeld.api.schemas import (
-    ChatCompletionRequest,
     SystemMessage,
     UserMessage,
 )
 from modelmeld.tokens import (
     CharBasedTokenCounter,
     LiteLLMTokenCounter,
-    TokenCounter,
     build_token_counter,
 )
-
 
 # ---------------------------------------------------------------------------
 # CharBasedTokenCounter — heuristic

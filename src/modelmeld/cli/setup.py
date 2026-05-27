@@ -15,10 +15,9 @@ and _normalize for env-var input scrubbing (CR/LF/whitespace stripped).
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
-import shutil
-import stat
 import sys
 import time
 import urllib.error
@@ -32,10 +31,8 @@ from typing import Any
 # never crashes on output. Python 3.7+ supports reconfigure() on most
 # stdio file objects.
 for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, Exception):  # noqa: BLE001
-        pass
+    with contextlib.suppress(AttributeError, Exception):
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore[reportAttributeAccessIssue]
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +331,7 @@ def _smoke_test(
     else:
         try:
             err_body = json.loads(body)
-        except Exception:  # noqa: BLE001
+        except Exception:
             err_body = {"detail": body[:200].decode("utf-8", "replace")}
         results.append(SmokeResult(
             "OSS routing (-saver)", False, f"HTTP {status}: {err_body}",
@@ -379,7 +376,7 @@ def _smoke_test(
                     results.append(SmokeResult(
                         "BYOK routing (-quality)", False, f"400: {err}",
                     ))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 results.append(SmokeResult(
                     "BYOK routing (-quality)", False,
                     f"400 (couldn't parse body): {body[:150].decode('utf-8','replace')}",
@@ -522,7 +519,7 @@ def run_setup(args: Any) -> int:
             env_script, base_url, api_key, byok_anthropic or None, byok_openai or None,
         )
         _ok(f"Wrote {env_script} (LF-only, mode 0600)")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         _err(f"Failed to write env script: {e}")
         return 1
 
@@ -548,7 +545,7 @@ def run_setup(args: Any) -> int:
         _write_claude_code_cache(cache_path, base_url, models)
         n_models = len(models.get("data", []))
         _ok(f"Wrote {cache_path} ({n_models} models, LF-only, mode 0600)")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         _err(f"Failed to write Claude Code cache: {e}")
         # Don't return; the env script alone is still useful.
         _warn("Continuing — env script is set up, just no picker entries.")
@@ -573,16 +570,16 @@ def run_setup(args: Any) -> int:
     print()
     print(_bold("Setup complete."))
     print()
-    print(f"  1. Source the env script in your shell:")
+    print("  1. Source the env script in your shell:")
     print(f"     {_bold(f'source {env_script}')}")
-    print(f"  2. Launch Claude Code:")
+    print("  2. Launch Claude Code:")
     print(f"     {_bold('claude')}")
-    print(f"  3. Pick a routing tier in /model:")
+    print("  3. Pick a routing tier in /model:")
     print(f"     • {_bold('ModelMeld — Saver')}  (OSS-only, ~90% savings)")
     print(f"     • {_bold('ModelMeld — Auto')}   (escalates to frontier on reasoning markers)")
     print(f"     • {_bold('ModelMeld — Quality')} (frontier-first, requires BYOK)")
     print()
-    print(f"  To persist these across shells, add to ~/.bashrc or ~/.zshrc:")
+    print("  To persist these across shells, add to ~/.bashrc or ~/.zshrc:")
     print(f"     {_bold(f'source {env_script}')}")
     print()
     return 0

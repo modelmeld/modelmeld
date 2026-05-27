@@ -65,7 +65,7 @@ class CapabilityRouter(Router):
     async def route(
         self,
         request: ChatCompletionRequest,
-        hints: "RoutingHints | None" = None,
+        hints: RoutingHints | None = None,
         extra_adapters: dict[str, ProviderAdapter] | None = None,
     ) -> RoutingDecision:
         """Route the request to a provider.
@@ -101,7 +101,7 @@ class CapabilityRouter(Router):
     async def route_after_failure(
         self,
         failed: RoutingDecision,
-        request: ChatCompletionRequest,  # noqa: ARG002 — signature contract
+        request: ChatCompletionRequest,
         error: AdapterError | None = None,
         extra_adapters: dict[str, ProviderAdapter] | None = None,
     ) -> RoutingDecision | None:
@@ -128,7 +128,7 @@ class CapabilityRouter(Router):
 
         try:
             return await self._resolve_or_fail(
-                scout_dec, failover_from=failed_provider,
+                scout_dec, failover_from=failed_provider,  # pyright: ignore[reportArgumentType]
                 extra_adapters=extra_adapters,
             )
         except RouterError:

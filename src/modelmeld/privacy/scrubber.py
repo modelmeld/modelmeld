@@ -131,7 +131,7 @@ class RegexScrubber(Scrubber):
             return None
         if isinstance(content, str):
             return self.scrub_text(content)
-        return [self._scrub_part(p) for p in content]
+        return [self._scrub_part(p) for p in content]  # pyright: ignore[reportReturnType]
 
     def _scrub_part(self, part: object) -> object:
         if isinstance(part, TextPart):

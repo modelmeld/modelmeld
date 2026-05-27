@@ -13,7 +13,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import httpx
-import pytest
 
 from modelmeld.adapters.base import AdapterError, ProviderAdapter
 from modelmeld.api.schemas import (
@@ -244,8 +243,8 @@ async def test_eligible_providers_filter_excludes_cheaper_provider() -> None:
 def test_build_router_with_capability_policy() -> None:
     """Sanity check: passing routing_policy='capability' actually builds a CapabilityRouter."""
     from modelmeld.router import build_router
-    from modelmeld.scout import HeuristicScout
     from modelmeld.router.capability import CapabilityRouter as CR
+    from modelmeld.scout import HeuristicScout
 
     registry = ModelRegistry([_entry("a", "openai", 1.0, 3.0, coding=0.85)])
     settings = GatewaySettings(

@@ -37,8 +37,8 @@ collapse — the underlying registry and scout machinery is unchanged.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from enum import Enum
-from typing import Iterable
 
 
 class ModelMeldPolicy(str, Enum):
@@ -214,13 +214,13 @@ def should_escalate_to_frontier(request) -> tuple[bool, int]:
 
 
 __all__ = [
-    "ModelMeldPolicy",
     "POLICY_QUALITY_THRESHOLD",
-    "resolve_policy",
-    "oss_providers",
-    "frontier_providers",
-    "reasoning_markers",
+    "ModelMeldPolicy",
     "detect_reasoning_markers",
     "extract_user_text",
+    "frontier_providers",
+    "oss_providers",
+    "reasoning_markers",
+    "resolve_policy",
     "should_escalate_to_frontier",
 ]

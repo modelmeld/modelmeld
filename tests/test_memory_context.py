@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 from modelmeld.api.schemas import (
-    AssistantMessage,
     ChatCompletionRequest,
     SystemMessage,
     UserMessage,
 )
 from modelmeld.memory import (
-    ANONYMOUS_TENANT_ID,
     InMemoryMemoryStore,
     MemoryContext,
     MemoryIdentity,
@@ -218,7 +214,7 @@ async def test_budget_drops_oldest_recent_turns_first() -> None:
     store = InMemoryMemoryStore()
     await store.get_or_create_session("s-1", "acme")
     # 10 turns × 200 chars = ~2000 chars of L3 content
-    for i in range(10):
+    for _i in range(10):
         await store.append_turn("s-1", "acme", Role.USER, "X" * 200, 50)
 
     # Budget allows ~700 chars (enough for ~3 turns + overhead)

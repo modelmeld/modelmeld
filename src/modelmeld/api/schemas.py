@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -71,7 +71,7 @@ class AudioPart(BaseModel):
 
 
 ContentPart = Annotated[
-    Union[TextPart, ImagePart, AudioPart],
+    TextPart | ImagePart | AudioPart,
     Field(discriminator="type"),
 ]
 
@@ -151,7 +151,7 @@ class ToolMessage(BaseModel):
 
 
 Message = Annotated[
-    Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage],
+    SystemMessage | UserMessage | AssistantMessage | ToolMessage,
     Field(discriminator="role"),
 ]
 

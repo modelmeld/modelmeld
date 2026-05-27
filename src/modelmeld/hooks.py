@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -107,7 +107,7 @@ class HookRegistry:
         for handler in self._on_request_complete:
             try:
                 await handler(event)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception(
                     "on_request_complete hook failed",
                     extra={

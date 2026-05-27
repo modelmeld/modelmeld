@@ -16,7 +16,6 @@ from modelmeld.api.schemas import (
 from tests.fixtures.openai_requests import ALL_REQUESTS
 from tests.fixtures.openai_responses import ALL_RESPONSES
 
-
 # ---------------------------------------------------------------------------
 # Request fidelity (10 fixtures)
 # ---------------------------------------------------------------------------

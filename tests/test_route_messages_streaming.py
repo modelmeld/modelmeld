@@ -22,7 +22,6 @@ import json
 from collections.abc import AsyncIterator
 
 import httpx
-import pytest
 
 from modelmeld.adapters.base import ProviderAdapter
 from modelmeld.api.schemas import (
@@ -42,7 +41,6 @@ from modelmeld.memory import (
     InMemoryMemoryStore,
     Role,
 )
-
 
 # ---------------------------------------------------------------------------
 # SSE parsing helper
@@ -181,13 +179,12 @@ async def _stream_post(app, body: dict, headers: dict | None = None) -> tuple[in
     """POST stream=true, collect the full body. Returns (status, headers, raw_text)."""
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test",
-    ) as client:
-        async with client.stream("POST", "/v1/messages",
-                                 json=body, headers=headers or {}) as resp:
-            text = ""
-            async for piece in resp.aiter_text():
-                text += piece
-            return resp.status_code, dict(resp.headers), text
+    ) as client, client.stream("POST", "/v1/messages",
+                             json=body, headers=headers or {}) as resp:
+        text = ""
+        async for piece in resp.aiter_text():
+            text += piece
+        return resp.status_code, dict(resp.headers), text
 
 
 # ---------------------------------------------------------------------------
