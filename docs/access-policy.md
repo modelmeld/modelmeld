@@ -38,7 +38,7 @@ If neither A nor B applies:
 - The feed server returns HTTP 403 with a clear reason
 - The customer's `RegistryFeedClient` automatically falls back to the
   bundled snapshot (as it does for every failure mode — see
-  `core-engine/src/modelmeld/scout/feed.py`)
+  `src/modelmeld/scout/feed.py`)
 - Nothing else breaks; the gateway keeps routing on snapshot data
 
 ## Why this rule
@@ -57,7 +57,7 @@ indefinitely.
 ## Implementation: deferred to v0.2 (feed-server build)
 
 As of this writing, the feed server (`feed.modelmeld.ai`) doesn't exist
-yet. The `RegistryFeedClient` in core-engine knows how to fetch from one
+yet. The `RegistryFeedClient` in `modelmeld` knows how to fetch from one
 when it exists; until then, all gateways use the bundled snapshot.
 
 When the feed server is implemented (planned post-OSS-launch):

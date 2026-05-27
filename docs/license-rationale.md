@@ -90,7 +90,7 @@ A: No. Network-call clients are not derived works. You're fine.
 A: If you distribute the embedded gateway, you're distributing AGPL code — your application would need to also be AGPL (or commercially license from us). If your application calls a separately-installed gateway over HTTP, you're fine.
 
 **Q: Does AGPL apply to the bundled `default_registry.json` data file?**
-A: No. The data file is CC-BY-4.0 (see `core-engine/src/modelmeld/scout/data/LICENSE.md`). Only the Python code is AGPL.
+A: No. The data file is CC-BY-4.0 (see `src/modelmeld/scout/data/LICENSE.md`). Only the Python code is AGPL.
 
 **Q: Does AGPL apply to the live registry feed at `feed.modelmeld.ai`?**
 A: No. The live feed is a subscription product with its own terms — neither AGPL nor CC-BY-4.0. The feed data is licensed only with an active subscription.
@@ -100,9 +100,9 @@ A: No. The live feed is a subscription product with its own terms — neither AG
 ## If you're a lawyer reading this on behalf of a client
 
 The relevant legal text is:
-- **License file**: `core-engine/LICENSE` — verbatim GNU AGPL-3.0 from gnu.org
+- **License file**: `LICENSE` — verbatim GNU AGPL-3.0 from gnu.org
 - **SPDX identifier on every source file**: `AGPL-3.0-or-later`
-- **NOTICE file**: `core-engine/NOTICE` — covers the data exception and third-party components
+- **NOTICE file**: `NOTICE` — covers the data exception and third-party components
 
 ModelMeld is the copyright holder of all original modelmeld code as of the OSS launch. No external contributions had been merged before launch. The CC-BY-4.0 data file and AGPL code file are tagged separately and distributed in the same Python package; downstream packagers should preserve both tags.
 
