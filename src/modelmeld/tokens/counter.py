@@ -75,7 +75,7 @@ class LiteLLMTokenCounter(TokenCounter):
 
     def __init__(self) -> None:
         try:
-            import litellm
+            import litellm  # pyright: ignore[reportMissingImports]
         except ImportError as e:
             raise ImportError(
                 "LiteLLMTokenCounter requires `litellm`. "
