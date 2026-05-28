@@ -108,6 +108,12 @@ class GatewaySettings(BaseSettings):
     #               char-based with a warning when litellm isn't installed.
     token_counter_backend: Literal["char", "litellm"] = "char"
 
+    # Memory backend. Default remains in-process for dev/tests. Set
+    # MODELMELD_MEMORY_BACKEND=postgres plus MODELMELD_MEMORY_DATABASE_URL for
+    # a SQL-backed store shared across workers.
+    memory_backend: Literal["in_memory", "postgres"] = "in_memory"
+    memory_database_url: str | None = None
+
     # PII scrubbing. When True, message text is scrubbed before
     # any egress adapter call (is_egress=True). Local adapters (stub, vllm) are
     # never scrubbed since traffic stays inside the customer's boundary.
