@@ -39,6 +39,7 @@ dependencies = [
 openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.30"]
 all-providers = ["openai>=1.40", "anthropic>=0.30"]
+postgres = ["sqlalchemy[asyncio]>=2.0", "psycopg[binary]>=3.2"]
 # Cross-tokenizer counting. Provides accurate per-model token
 # counts via tiktoken / anthropic / huggingface backends bundled by litellm.
 tokenizer = ["litellm>=1.40"]
@@ -48,6 +49,8 @@ dev = [
     "hypothesis>=6.100",   # property-based tests
     "ruff>=0.5",
     "pyright>=1.1",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.19",
     "openai>=1.40",
     "anthropic>=0.30",
 ]

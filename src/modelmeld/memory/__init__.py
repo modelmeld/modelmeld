@@ -54,6 +54,10 @@ from modelmeld.memory.in_memory import (
     InMemoryMemoryStore,
     TenantMismatchError,
 )
+from modelmeld.memory.postgres import (
+    MissingPostgresDependencyError,
+    PostgresMemoryStore,
+)
 from modelmeld.memory.summarizer import (
     SummarizeCallable,
     SummarizerConfig,
@@ -85,6 +89,8 @@ __all__ = [
     "MemoryIdentity",
     "MemoryMode",
     "MemoryStore",
+    "MissingPostgresDependencyError",
+    "PostgresMemoryStore",
     "Role",
     "Session",
     "SummarizeCallable",

@@ -15,7 +15,7 @@ from modelmeld.adapters import ProviderAdapter
 from modelmeld.cache import CompletionCache, SemanticCompletionCache
 from modelmeld.config import GatewaySettings
 from modelmeld.hooks import HookRegistry
-from modelmeld.memory import InMemoryMemoryStore, MemoryStore
+from modelmeld.memory import InMemoryMemoryStore, MemoryStore, PostgresMemoryStore
 from modelmeld.privacy import Scrubber, build_scrubber
 from modelmeld.router import Router, SingleAdapterRouter, build_router
 from modelmeld.scout import ModelRegistry, Scout, build_scout, default_registry
@@ -77,9 +77,16 @@ def build_app(
     app.state.scrubber = scrubber if scrubber is not None else build_scrubber(app.state.settings)
     app.state.hooks = hooks or HookRegistry()
     app.state.model_registry = model_registry or default_registry()
-    # Tiered memory. Default: in-process backend for
-    # dev/tests. Enterprise plugs in a Postgres-backed store later.
-    app.state.memory_store = memory_store if memory_store is not None else InMemoryMemoryStore()
+    # Tiered memory. Default: in-process backend for dev/tests; operators can
+    # opt into a SQL-backed store with MODELMELD_MEMORY_BACKEND=postgres.
+    if memory_store is not None:
+        app.state.memory_store = memory_store
+    elif app.state.settings.memory_backend == "postgres":
+        app.state.memory_store = PostgresMemoryStore(
+            app.state.settings.memory_database_url
+        )
+    else:
+        app.state.memory_store = InMemoryMemoryStore()
     # Token counter. Default char-based; settings can switch to
     # litellm. Pass `token_counter=` to inject a custom impl in tests.
     app.state.token_counter = (
