@@ -98,6 +98,8 @@ Look for these response headers:
 | `x-modelmeld-tier` | The serving tier used for the request. |
 | `x-modelmeld-task-category` | The inferred task category, unless you supplied a hint through another client. |
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Common gotchas
 
 - **Use the OpenAI-compatible provider shape**. Put ModelMeld under
