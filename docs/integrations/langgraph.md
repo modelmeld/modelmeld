@@ -49,6 +49,8 @@ response = coder_llm.invoke(messages)
 # response.response_metadata["headers"]["x-modelmeld-routed-model"]  # e.g. "qwen3-coder-next"
 ```
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Pattern: dynamic category per state
 
 If your graph branches on the task type, override the category per call:
