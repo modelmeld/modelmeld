@@ -84,6 +84,8 @@ Use Continue's "Show Model" toggle in the chat UI to see which model
 served the response. The displayed model name is what `response.model`
 returns — for ModelMeld that's the actual routed model.
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Common gotchas
 
 - **`requestOptions.headers` is YAML strings** — quote numeric values
