@@ -73,7 +73,7 @@ MODELMELD_ROUTING_POLICY=always_cloud   # or scout_driven
 | **Wire format** | OpenAI Chat Completions (native) |
 | **Auth** | API key (`FIREWORKS_API_KEY` or `MODELMELD_FIREWORKS_API_KEY`) |
 | **Streaming** | ✅ SSE |
-| **Notes** | Thin OpenAI-compatible pass-through. Fireworks serves many open-weight models (Qwen, Llama, DeepSeek, Phi, etc.) under one endpoint; `request.model` selects which one. Eligible for saver-tier routing when your registry overlay has entries tagged with the `fireworks` provider. |
+| **Notes** | Thin OpenAI-compatible pass-through. Fireworks serves many open-weight models (Qwen, Llama, DeepSeek, Phi, etc.) under one endpoint; `request.model` selects which one. The bundled registry overlay ships with Fireworks-tagged entries for the canonical OSS lineup, so saver-tier routing works out of the box once `FIREWORKS_API_KEY` is set. |
 
 ```bash
 FIREWORKS_API_KEY=fw_...
@@ -88,7 +88,7 @@ FIREWORKS_API_KEY=fw_...
 | **Wire format** | OpenAI Chat Completions (native) |
 | **Auth** | API key (`TOGETHER_API_KEY` or `MODELMELD_TOGETHER_API_KEY`) |
 | **Streaming** | ✅ SSE |
-| **Notes** | Thin OpenAI-compatible pass-through. Together serves many open-weight models under one endpoint. Eligible for saver-tier routing when your registry overlay has entries tagged with the `together` provider. |
+| **Notes** | Thin OpenAI-compatible pass-through. Together serves many open-weight models under one endpoint. The bundled registry overlay ships with Together-tagged entries for the canonical OSS lineup, so saver-tier routing works out of the box once `TOGETHER_API_KEY` is set. |
 
 ```bash
 TOGETHER_API_KEY=...
@@ -103,7 +103,7 @@ TOGETHER_API_KEY=...
 | **Wire format** | OpenAI Chat Completions (native) |
 | **Auth** | API key (`OPENROUTER_API_KEY` or `MODELMELD_OPENROUTER_API_KEY`) |
 | **Streaming** | ✅ SSE |
-| **Notes** | OpenRouter is a meta-router that proxies to many underlying providers; from a wire-format perspective it's just another OpenAI-compatible endpoint. The adapter does not set OpenRouter's optional `HTTP-Referer` / `X-Title` analytics headers by default — supply them via custom request headers if you want your traffic identified on OpenRouter's public dashboard. Eligible for saver-tier routing when your registry overlay has entries tagged with the `openrouter` provider. |
+| **Notes** | OpenRouter is a meta-router that proxies to many underlying providers; from a wire-format perspective it's just another OpenAI-compatible endpoint. The adapter does not set OpenRouter's optional `HTTP-Referer` / `X-Title` analytics headers by default — supply them via custom request headers if you want your traffic identified on OpenRouter's public dashboard. The bundled registry overlay ships with OpenRouter-tagged entries for the canonical OSS lineup, so saver-tier routing works out of the box once `OPENROUTER_API_KEY` is set. |
 
 ```bash
 OPENROUTER_API_KEY=...

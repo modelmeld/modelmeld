@@ -67,16 +67,23 @@ When a client picks `anthropic/modelmeld-saver` from the model picker,
 the scout restricts to OSS providers (vllm / fireworks / together /
 openrouter). When they pick `-quality`, the scout restricts to frontier
 (anthropic / openai). The decision is logged in the
-`x-modelmeld-routed-model` response header.
+`x-modelmeld-routed-model` and `x-modelmeld-routed-to` response headers.
 
-**Saver routing requires registry entries that match a configured
-provider.** The bundled `default_registry.json` ships with a small set
-of canonical entries tagged for vllm and the frontier providers; if you
-want `-saver` to route through Fireworks / Together / OpenRouter, point
-the gateway at a registry overlay that contains entries tagged with
-those providers (see [`registry-feed.md`](registry-feed.md)). Without
-matching entries, `-saver` will fall through with a 503 and the
-operator log will show "no eligible model for saver policy."
+**Multi-provider routing works out of the box.** The bundled
+`default_registry.json` plus `default_overlay.json` ship with a curated
+set of tool-capable OSS models tagged for vLLM AND the cloud OSS
+providers (Fireworks / Together / OpenRouter). Set whichever provider
+keys you have — `-saver` and `-auto` will route across them
+automatically, picking the cheapest qualified model per request. No
+separate overlay configuration required.
+
+The bundled overlay covers the most common canonical models
+(qwen3-coder-30b, deepseek-v4-pro, llama-3.3-70b, gpt-oss-120b,
+qwen3-coder-flash, and a handful more) with conservative public list
+prices. For the **full curated lineup**, weekly model + benchmark
+refreshes, and provider-reliability tracking, point at the live feed
+via `MODELMELD_REGISTRY_FEED_URL` + a license key — see
+[`registry-feed.md`](registry-feed.md).
 
 ## Verify it's working
 
