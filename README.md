@@ -155,6 +155,7 @@ Two complementary surfaces:
   - **Routing-hint headers** (`x-modelmeld-task-category`,
     `x-modelmeld-agent-role`, etc.) let frameworks declare task category
     and agent role explicitly instead of relying on the classifier.
+    (see [Routing-hint headers reference](docs/routing-hints.md)).
 
 ## Integration scope — v1 commitments
 
