@@ -61,6 +61,24 @@ def _build_adapter(provider: str, settings: object) -> ProviderAdapter:
             base_url=getattr(settings, "anthropic_base_url", None),
             served_model=getattr(settings, "anthropic_served_model", None),
         )
+    if provider == "fireworks":
+        from modelmeld.adapters.fireworks_adapter import FireworksAdapter
+
+        return FireworksAdapter(
+            api_key=getattr(settings, "fireworks_api_key", None),
+        )
+    if provider == "together":
+        from modelmeld.adapters.together_adapter import TogetherAdapter
+
+        return TogetherAdapter(
+            api_key=getattr(settings, "together_api_key", None),
+        )
+    if provider == "openrouter":
+        from modelmeld.adapters.openrouter_adapter import OpenRouterAdapter
+
+        return OpenRouterAdapter(
+            api_key=getattr(settings, "openrouter_api_key", None),
+        )
     if provider == "stub":
         return StubAdapter()
     raise ValueError(f"Unknown adapter provider: {provider}")
@@ -80,9 +98,7 @@ def build_router(
     from modelmeld.config import GatewaySettings
 
     if not isinstance(settings, GatewaySettings):
-        raise TypeError(
-            f"build_router expects GatewaySettings, got {type(settings).__name__}"
-        )
+        raise TypeError(f"build_router expects GatewaySettings, got {type(settings).__name__}")
 
     if settings.routing_policy == "single":
         adapter = _build_adapter(settings.upstream_provider, settings)
@@ -106,12 +122,26 @@ def build_router(
 
 
 def _build_capability_router(settings: object, model_registry: object | None) -> Router:
-    """Build CapabilityRouter from settings + (optional) registry override."""
+    """Build CapabilityRouter from settings + (optional) registry override.
+
+    When no override is supplied, loads the multi-provider default
+    (``default_registry.json`` + ``default_overlay.json``) so cloud OSS
+    providers like Fireworks / Together / OpenRouter are routable out
+    of the box without a separately-sourced registry overlay. Callers
+    can still pass a base ``ModelRegistry`` or a custom
+    ``MultiProviderModelRegistry`` to override.
+    """
     from modelmeld.scout.capability import CapabilityScout
-    from modelmeld.scout.registry import ModelRegistry, default_registry
+    from modelmeld.scout.multi_provider_registry import (
+        default_multi_provider_registry,
+    )
+    from modelmeld.scout.registry import ModelRegistry
 
     registry: ModelRegistry
-    registry = model_registry if isinstance(model_registry, ModelRegistry) else default_registry()
+    if isinstance(model_registry, ModelRegistry):
+        registry = model_registry
+    else:
+        registry = default_multi_provider_registry()
 
     eligible_list = getattr(settings, "capability_eligible_providers", None)
     eligible_providers = frozenset(eligible_list) if eligible_list else None
@@ -155,6 +185,12 @@ def _infer_providers_from_credentials(settings: object) -> list[str]:
         providers.append("vllm")
     if getattr(settings, "tensorrt_llm_endpoint", None):
         providers.append("tensorrt_llm")
+    if getattr(settings, "fireworks_api_key", None):
+        providers.append("fireworks")
+    if getattr(settings, "together_api_key", None):
+        providers.append("together")
+    if getattr(settings, "openrouter_api_key", None):
+        providers.append("openrouter")
     return providers or ["stub"]
 
 
