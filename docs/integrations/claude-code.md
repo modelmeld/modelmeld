@@ -116,6 +116,8 @@ You can grep the headers from `claude --verbose` output or use the
 `/cost` slash-command in-session to see per-request cost (which
 reflects ModelMeld's routed model + actual provider pricing).
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Surfacing auto-route aliases in the /model picker
 
 Claude Code 2.1.126+ ships an opt-in "gateway model discovery" feature

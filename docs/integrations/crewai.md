@@ -46,6 +46,8 @@ coder = Agent(
 CrewAI passes `default_headers` through to LiteLLM → through to the
 gateway. Each agent gets a cost-optimized model for its role.
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Alternative: per-task task_category override
 
 If a single agent handles different categories of work in different

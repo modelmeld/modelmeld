@@ -72,6 +72,8 @@ x-modelmeld-task-category: coding
 x-modelmeld-quality-threshold: 0.80
 ```
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Common gotchas
 
 - **Model name prefixes are LiteLLM's, not ours** — `openai/foo`,

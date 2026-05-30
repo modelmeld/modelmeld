@@ -46,6 +46,8 @@ The `Coder` agent gets routed to a cheap coding-strong model (e.g.
 `qwen3-coder-next`). The `Reviewer` gets a stronger model at threshold
 0.90. The `Planner` gets a reasoning-strong model.
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## GroupChat — different role per agent
 
 ```python

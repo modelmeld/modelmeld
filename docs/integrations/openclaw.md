@@ -51,6 +51,8 @@ sub_agents:
       x-modelmeld-quality-threshold: "0.90"
 ```
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Verifying the cost win
 
 Run a 100-task benchmark with and without the gateway pointed at:

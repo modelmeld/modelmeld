@@ -60,6 +60,8 @@ The model name comes from `response.model` which we set to our
 routed model. To see the full audit trail, check the gateway's
 account dashboard.
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Common gotchas
 
 - **`Custom Headers` field** — Cline's OpenAI Compatible provider has

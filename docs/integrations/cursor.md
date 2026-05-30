@@ -64,6 +64,8 @@ async def proxy(req: Request):
 
 Then point Cursor at `http://localhost:8000/v1`.
 
+For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+
 ## Verify the routing
 
 Cursor doesn't surface response headers in its UI. To see what model
