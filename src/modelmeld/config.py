@@ -61,7 +61,16 @@ class GatewaySettings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_base_url: str | None = None
     vllm_endpoint: str | None = None
-    tensorrt_llm_endpoint: str | None = None   # Triton + TensorRT-LLM
+    tensorrt_llm_endpoint: str | None = None  # Triton + TensorRT-LLM
+    # Cloud OSS-model providers. The adapter classes already exist in
+    # `modelmeld.adapters.{fireworks,together,openrouter}_adapter`; these
+    # settings drive `_build_adapter` + `_infer_providers_from_credentials`
+    # so a customer who sets only one of these env vars gets a working
+    # capability router out of the box (i.e., the OSS engine actually
+    # delivers multi-provider routing without a Pro registry overlay).
+    fireworks_api_key: str | None = None
+    together_api_key: str | None = None
+    openrouter_api_key: str | None = None
 
     # F-8: operator-pinned upstream model per adapter. When set, the adapter
     # substitutes the client's `request.model` field with this value on
