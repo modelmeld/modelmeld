@@ -254,7 +254,7 @@ def test_load_default_overlay_models_have_multiple_providers() -> None:
     overlay_expected_multi = [
         "deepseek-v4-pro",  # fireworks + together + openrouter + vllm
         "gpt-oss-120b",  # same
-        "llama-3-3-70b-instruct",  # together + openrouter + vllm
+        "llama-3.3-70b-instruct",  # together + openrouter + vllm
         "kimi-k2.6",  # fireworks + together + vllm
     ]
     for model_id in overlay_expected_multi:
@@ -265,10 +265,10 @@ def test_load_default_overlay_models_have_multiple_providers() -> None:
 def test_load_default_overlay_task_scores_inherit_from_base() -> None:
     """Overlay rows with empty task_scores inherit from base by model_id."""
     reg = MultiProviderModelRegistry.load_default()
-    # qwen3-coder-30b@openrouter should inherit task_scores from the base
-    # qwen3-coder-30b@vllm entry (overlay JSON has empty task_scores).
-    overlay_entry = reg.get_by_key("qwen3-coder-30b", "openrouter")
-    base_entry = reg.get_by_key("qwen3-coder-30b", "vllm")
+    # qwen3-coder-next@openrouter should inherit task_scores from the base
+    # qwen3-coder-next@vllm entry (overlay JSON has empty task_scores).
+    overlay_entry = reg.get_by_key("qwen3-coder-next", "openrouter")
+    base_entry = reg.get_by_key("qwen3-coder-next", "vllm")
     assert overlay_entry is not None
     assert base_entry is not None
     assert overlay_entry.task_scores == base_entry.task_scores
@@ -286,7 +286,7 @@ def test_load_default_overlay_supports_tools_inherits_from_base() -> None:
 def test_load_default_overlay_supports_tools_inherits_true() -> None:
     """If base says tools=True, overlay row should also say tools=True."""
     reg = MultiProviderModelRegistry.load_default()
-    overlay_entry = reg.get_by_key("qwen3-coder-30b", "openrouter")
+    overlay_entry = reg.get_by_key("qwen3-coder-next", "openrouter")
     assert overlay_entry is not None
     assert overlay_entry.supports_tools is True
 
@@ -294,16 +294,16 @@ def test_load_default_overlay_supports_tools_inherits_true() -> None:
 def test_load_default_overlay_costs_match_overlay_json() -> None:
     """Overlay row costs come from the overlay JSON, not the base."""
     reg = MultiProviderModelRegistry.load_default()
-    overlay = reg.get_by_key("qwen3-coder-30b", "openrouter")
-    base = reg.get_by_key("qwen3-coder-30b", "vllm")
+    overlay = reg.get_by_key("qwen3-coder-next", "openrouter")
+    base = reg.get_by_key("qwen3-coder-next", "vllm")
     assert overlay is not None
     assert base is not None
     # The openrouter row's costs come from the overlay JSON and must
     # differ from the base vllm row (different provider, different cost).
     # Specific values validated against OpenRouter's live catalog
     # 2026-05-30 — see scripts/validate_overlay.py.
-    assert overlay.cost_per_m_input == 0.07
-    assert overlay.cost_per_m_output == 0.27
+    assert overlay.cost_per_m_input == 0.11
+    assert overlay.cost_per_m_output == 0.80
     assert overlay.cost_per_m_input != base.cost_per_m_input
 
 

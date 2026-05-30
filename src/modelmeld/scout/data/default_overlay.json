@@ -16,32 +16,12 @@
       "provider_model_id": "qwen/qwen-2.5-coder-32b-instruct",
       "context_window": 128000,
       "cost_per_m_input": 0.66,
-      "cost_per_m_output": 1.00,
+      "cost_per_m_output": 1.0,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
     },
     {
-      "model_id": "qwen3-coder-30b",
-      "provider": "openrouter",
-      "provider_model_id": "qwen/qwen3-coder-30b-a3b-instruct",
-      "context_window": 160000,
-      "cost_per_m_input": 0.07,
-      "cost_per_m_output": 0.27,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
-    },
-    {
-      "model_id": "qwen3-coder-flash",
-      "provider": "openrouter",
-      "provider_model_id": "qwen/qwen3-coder-flash",
-      "context_window": 1000000,
-      "cost_per_m_input": 0.20,
-      "cost_per_m_output": 0.98,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
-    },
-    {
-      "model_id": "llama-3-3-70b-instruct",
+      "model_id": "llama-3.3-70b-instruct",
       "provider": "together",
       "provider_model_id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
       "context_window": 131072,
@@ -51,11 +31,11 @@
       "source": "oss_overlay_2026_05_30"
     },
     {
-      "model_id": "llama-3-3-70b-instruct",
+      "model_id": "llama-3.3-70b-instruct",
       "provider": "openrouter",
       "provider_model_id": "meta-llama/llama-3.3-70b-instruct",
       "context_window": 131072,
-      "cost_per_m_input": 0.10,
+      "cost_per_m_input": 0.1,
       "cost_per_m_output": 0.32,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
@@ -65,8 +45,8 @@
       "provider": "fireworks",
       "provider_model_id": "accounts/fireworks/models/deepseek-v4-pro",
       "context_window": 1048576,
-      "cost_per_m_input": 0.30,
-      "cost_per_m_output": 1.10,
+      "cost_per_m_input": 0.3,
+      "cost_per_m_output": 1.1,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
     },
@@ -75,8 +55,8 @@
       "provider": "together",
       "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro",
       "context_window": 512000,
-      "cost_per_m_input": 2.10,
-      "cost_per_m_output": 4.40,
+      "cost_per_m_input": 2.1,
+      "cost_per_m_output": 4.4,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
     },
@@ -95,8 +75,8 @@
       "provider": "fireworks",
       "provider_model_id": "accounts/fireworks/models/gpt-oss-120b",
       "context_window": 131072,
-      "cost_per_m_input": 0.50,
-      "cost_per_m_output": 0.50,
+      "cost_per_m_input": 0.5,
+      "cost_per_m_output": 0.5,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
     },
@@ -106,7 +86,7 @@
       "provider_model_id": "openai/gpt-oss-120b",
       "context_window": 131072,
       "cost_per_m_input": 0.15,
-      "cost_per_m_output": 0.60,
+      "cost_per_m_output": 0.6,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
     },
@@ -125,8 +105,8 @@
       "provider": "fireworks",
       "provider_model_id": "accounts/fireworks/models/kimi-k2p6",
       "context_window": 262144,
-      "cost_per_m_input": 0.60,
-      "cost_per_m_output": 0.60,
+      "cost_per_m_input": 0.6,
+      "cost_per_m_output": 0.6,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
     },
@@ -135,8 +115,8 @@
       "provider": "together",
       "provider_model_id": "moonshotai/Kimi-K2.6",
       "context_window": 262144,
-      "cost_per_m_input": 1.20,
-      "cost_per_m_output": 4.50,
+      "cost_per_m_input": 1.2,
+      "cost_per_m_output": 4.5,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
     },
@@ -147,6 +127,16 @@
       "context_window": 16384,
       "cost_per_m_input": 0.07,
       "cost_per_m_output": 0.14,
+      "task_scores": {},
+      "source": "oss_overlay_2026_05_30"
+    },
+    {
+      "model_id": "qwen3-coder-next",
+      "provider": "openrouter",
+      "provider_model_id": "qwen/qwen3-coder-next",
+      "context_window": 262144,
+      "cost_per_m_input": 0.11,
+      "cost_per_m_output": 0.8,
       "task_scores": {},
       "source": "oss_overlay_2026_05_30"
     }
