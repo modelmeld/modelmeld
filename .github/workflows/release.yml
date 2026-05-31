@@ -102,9 +102,13 @@ jobs:
 
       - name: Generate CycloneDX SBOM
         run: |
+          # cyclonedx-bom 4.x uses `--outfile` (one word), not
+          # `--output-file`. Worth a comment because the wrong flag
+          # caused the v0.2.0 release pipeline to fail at SBOM step
+          # (2026-05-30 incident).
           cyclonedx-py environment \
             --output-format json \
-            --output-file modelmeld-${{ needs.build.outputs.version }}-sbom.json
+            --outfile modelmeld-${{ needs.build.outputs.version }}-sbom.json
 
       - name: Upload SBOM
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
