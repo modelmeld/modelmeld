@@ -77,14 +77,23 @@ class CapabilityRouter(Router):
         responsible for the override adapter's lifecycle (don't put a
         shared client in here).
         """
-        # When extra_adapters are provided, derive the BYOK frontier-provider
-        # set + pass to the scout so QUALITY/AUTO-escalated policies restrict
-        # to providers the customer can actually pay for. Avoids picking
-        # gpt-5-mini when the customer only supplied an Anthropic key.
-        avail_frontier: frozenset[str] | None = None
+        # Tell the scout which frontier providers actually have adapters
+        # available — combining env-configured persistent adapters AND
+        # per-request BYOK overrides. Without this, AUTO-escalated policy
+        # picks a frontier model (e.g. claude-opus-4-7) and then the
+        # router can't dispatch because no frontier adapter is configured
+        # → 503 (Sprint 3 gap). Now an empty intersection signals the
+        # scout to fall back to an OSS reasoning model instead.
+        #
+        # Restrict to BYOK-eligible providers for the BYOK portion to
+        # avoid picking gpt-5-mini when the customer only supplied an
+        # Anthropic key.
+        from modelmeld.api.byok import eligible_providers as byok_eligible
+        from modelmeld.scout.policy import frontier_providers as _frontier
+        all_provider_keys = set(self.adapters_by_provider.keys())
         if extra_adapters:
-            from modelmeld.api.byok import eligible_providers as byok_eligible
-            avail_frontier = frozenset(extra_adapters.keys()) & byok_eligible()
+            all_provider_keys |= frozenset(extra_adapters.keys()) & byok_eligible()
+        avail_frontier: frozenset[str] = frozenset(all_provider_keys) & _frontier()
 
         try:
             decision = await self.scout.choose(

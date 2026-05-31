@@ -620,6 +620,39 @@ async def test_auto_alias_single_marker_does_not_escalate() -> None:
     assert "escalated=no" in decision.rationale
 
 
+async def test_auto_alias_falls_back_to_oss_reasoner_when_no_frontier_adapter() -> None:
+    """Sprint 3 (B-2): AUTO with reasoning markers must NOT 503 when the
+    operator has no frontier adapter configured. Should pick the best
+    OSS reasoning model instead.
+
+    The router computes `available_frontier_providers` from the union of
+    its env-configured adapters + BYOK overrides. When that intersection
+    with frontier_providers() is empty, the scout's AUTO branch leaves
+    `eligible` as the OSS pool rather than returning an empty set.
+    """
+    scout = CapabilityScout(registry=_mixed_tier_registry())
+    decision = await scout.choose(
+        _policy_req(
+            "anthropic/modelmeld-auto",
+            "Please think step by step and explain your reasoning carefully.",
+        ),
+        # Operator has NO frontier adapters configured — neither env
+        # (Anthropic / OpenAI keys missing) nor BYOK.
+        available_frontier_providers=frozenset(),
+    )
+    # 2 markers tripped escalation, but no frontier adapter → fall back
+    # to the OSS pool. Picker chooses the reasoning-capable OSS row.
+    assert decision.chosen_provider in {"openrouter", "vllm", "fireworks", "together"}, (
+        f"Expected OSS provider on fallback, got {decision.chosen_provider}. "
+        f"Rationale: {decision.rationale}"
+    )
+    # The rationale must call out the fallback explicitly — operators
+    # reading the audit log need to see WHY a frontier-shaped request
+    # landed on an OSS model.
+    assert "no_frontier_adapter" in decision.rationale
+    assert "fallback=oss_reasoner" in decision.rationale
+
+
 async def test_quality_alias_picks_frontier_by_default() -> None:
     """QUALITY restricts to frontier providers (anthropic/openai).
     Even if frontier task_scores are lower than OSS in some category,

@@ -270,10 +270,23 @@ class CapabilityScout:
                     fr = frontier_providers()
                     if available_frontier_providers is not None:
                         fr = fr & available_frontier_providers
-                    eligible = fr
-                    policy_rationale = (
-                        f"policy=auto(escalated=frontier;markers={marker_count})"
-                    )
+                    if not fr:
+                        # Sprint 3 gap fix: AUTO wants to escalate but no
+                        # frontier adapter is available (neither env-configured
+                        # nor BYOK). Fall back to an OSS reasoning model
+                        # rather than 503ing — leave `eligible` as the original
+                        # OSS pool so the picker selects whichever OSS model
+                        # has the highest reasoning task_score within budget.
+                        policy_rationale = (
+                            f"policy=auto(escalation_requested;"
+                            f"no_frontier_adapter;fallback=oss_reasoner;"
+                            f"markers={marker_count})"
+                        )
+                    else:
+                        eligible = fr
+                        policy_rationale = (
+                            f"policy=auto(escalated=frontier;markers={marker_count})"
+                        )
                 else:
                     policy_rationale = f"policy=auto(escalated=no;markers={marker_count})"
             elif policy is ModelMeldPolicy.QUALITY:
