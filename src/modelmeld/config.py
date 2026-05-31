@@ -88,6 +88,17 @@ class GatewaySettings(BaseSettings):
     scout_provider: Literal["heuristic"] = "heuristic"
     scout_confidence_threshold: float = 0.65
 
+    # Subscription passthrough (Sprint 5 / 5.5). When True, an inbound
+    # request carrying an OAuth-bearer-shaped Authorization header (JWT
+    # prefix `eyJ...`) is routed to a passthrough adapter — Codex CLI's
+    # chatgpt.com backend for /v1/chat/completions, api.anthropic.com
+    # for /v1/messages — instead of the normal capability router. Keys
+    # are NEVER persisted; the request flows verbatim with headers
+    # preserved. ToS-safe posture: self-host only, single-user-per-
+    # instance, no multi-tenant pooling. Default off — opt-in flag for
+    # power users. See docs/subscription-passthrough.md.
+    allow_subscription_passthrough: bool = False
+
     # Capability routing. Used when routing_policy="capability".
     # `capability_quality_threshold` is the minimum task_score (0..1) a model
     # must have on the classified task category to be a candidate. Bumping it

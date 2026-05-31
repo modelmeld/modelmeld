@@ -55,6 +55,11 @@ from modelmeld.memory import (
     extract_memory_identity,
     inject_into_request,
 )
+from modelmeld.api.auth_detection import classify_authorization
+from modelmeld.api.subscription_passthrough import (
+    PassthroughVendor,
+    resolve_passthrough_router,
+)
 from modelmeld.privacy import Redaction, Scrubber
 from modelmeld.router import Router, RouterError, RoutingDecision
 from modelmeld.tokens import TokenCounter
@@ -123,8 +128,25 @@ async def chat_completions(
     byok_creds = extract_byok_credentials(fastapi_request.headers.items())
     byok_adapters = build_byok_adapters(byok_creds) if not byok_creds.is_empty() else {}
 
+    # Subscription passthrough (Sprint 5/5.5). When an inbound request
+    # carries an OAuth-bearer-shaped Authorization header AND the
+    # operator has set allow_subscription_passthrough=True, bypass the
+    # normal capability router and forward verbatim to the appropriate
+    # upstream (Codex backend for /v1/chat/completions). When the bearer
+    # is present but the flag is False, returns 403 — silent fallback
+    # would yield a confusing downstream error.
+    auth_classification = classify_authorization(
+        fastapi_request.headers.get("authorization"),
+    )
+    passthrough_router = resolve_passthrough_router(
+        auth_classification,
+        vendor=PassthroughVendor.CODEX,
+        allow_passthrough=bool(getattr(settings, "allow_subscription_passthrough", False)),
+    )
+    active_router: Router = passthrough_router or rt
+
     try:
-        decision = await rt.route(
+        decision = await active_router.route(
             request,
             hints=hints,
             extra_adapters=byok_adapters if byok_adapters else None,
