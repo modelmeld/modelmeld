@@ -884,7 +884,7 @@ async def test_count_tokens_translation_error_returns_400() -> None:
 #      layer would be a contradictory signal.
 # ---------------------------------------------------------------------------
 
-from modelmeld.api.routes.messages import (  # noqa: E402
+from modelmeld.api.routes.messages import (
     _collect_anthropic_extra_headers,
     _collect_oauth_camouflage_headers,
 )
