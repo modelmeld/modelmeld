@@ -33,6 +33,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from modelmeld.adapters import AdapterError
 from modelmeld.adapters.anthropic_adapter import AnthropicAdapter
 from modelmeld.api._safe_error_detail import safe_error_detail
+from modelmeld.api.auth_detection import classify_authorization
+from modelmeld.api.subscription_passthrough import (
+    PassthroughVendor,
+    resolve_passthrough_router,
+)
 from modelmeld.api.byok import (
     build_byok_adapters,
     extract_byok_credentials,
@@ -271,9 +276,28 @@ async def anthropic_messages(
     byok_creds = extract_byok_credentials(fastapi_request.headers.items())
     byok_adapters = build_byok_adapters(byok_creds) if not byok_creds.is_empty() else {}
 
+    # Subscription passthrough (Sprint 5). When the inbound Authorization
+    # carries an OAuth-bearer JWT and the operator has enabled the opt-in
+    # flag, route via AnthropicAdapter in oauth-bearer mode (raw HTTP to
+    # api.anthropic.com with Authorization: Bearer, no SDK) instead of
+    # the normal capability router. Mirrors the chat.py /v1/chat/completions
+    # wiring with vendor=ANTHROPIC instead of CODEX.
+    settings_obj = getattr(fastapi_request.app.state, "settings", None)
+    auth_classification = classify_authorization(
+        fastapi_request.headers.get("authorization"),
+    )
+    passthrough_router = resolve_passthrough_router(
+        auth_classification,
+        vendor=PassthroughVendor.ANTHROPIC,
+        allow_passthrough=bool(
+            getattr(settings_obj, "allow_subscription_passthrough", False),
+        ),
+    )
+    active_router: Router = passthrough_router or rt
+
     # Routing decision — scout sees the translated OpenAI-shape request.
     try:
-        decision = await rt.route(
+        decision = await active_router.route(
             internal_request,
             hints=hints,
             extra_adapters=byok_adapters if byok_adapters else None,

@@ -118,24 +118,17 @@ def test_oauth_bearer_codex_vendor_returns_single_adapter_router() -> None:
     assert result.adapter.name == "codex_passthrough"
 
 
-def test_oauth_bearer_anthropic_vendor_currently_503s_pending_sprint_5() -> None:
-    """The Anthropic passthrough adapter is Sprint 5 work — until that
-    extension lands, the helper returns None for ANTHROPIC vendor, which
-    surfaces as a clean 500 from the helper (not a 200 that silently
-    routes wrong).
-
-    Once AnthropicAdapter.from_oauth() exists, this test becomes the
-    symmetric happy-path assertion for Anthropic. For now it pins the
-    not-yet-implemented contract.
-    """
-    with pytest.raises(HTTPException) as exc:
-        resolve_passthrough_router(
-            _auth(AuthKind.OAUTH_BEARER, "eyJfake_claude_max_jwt"),
-            vendor=PassthroughVendor.ANTHROPIC,
-            allow_passthrough=True,
-        )
-    assert exc.value.status_code == 500
-    assert "subscription_passthrough_unavailable" in exc.value.detail
+def test_oauth_bearer_anthropic_vendor_returns_anthropic_oauth_adapter() -> None:
+    """Sprint 5 Phase B landed AnthropicAdapter OAuth mode. The helper
+    now resolves ANTHROPIC vendor to an AnthropicAdapter constructed
+    with oauth_bearer (NOT api_key)."""
+    result = resolve_passthrough_router(
+        _auth(AuthKind.OAUTH_BEARER, "eyJfake_claude_max_jwt"),
+        vendor=PassthroughVendor.ANTHROPIC,
+        allow_passthrough=True,
+    )
+    assert isinstance(result, SingleAdapterRouter)
+    assert result.adapter.name == "anthropic"
 
 
 # ---------------------------------------------------------------------------

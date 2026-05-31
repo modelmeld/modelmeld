@@ -184,6 +184,194 @@ async def test_health_returns_true() -> None:
 
 
 # ---------------------------------------------------------------------------
+# OAuth-bearer mode (Sprint 5 subscription passthrough)
+# ---------------------------------------------------------------------------
+
+import json  # noqa: E402
+
+import httpx  # noqa: E402
+
+from modelmeld.api.schemas import UserMessage  # noqa: E402
+
+
+def test_rejects_both_api_key_and_oauth_bearer() -> None:
+    """The two auth modes are mutually exclusive — silent precedence
+    would surprise operators about which mode is active."""
+    with pytest.raises(AdapterError, match="mutually exclusive"):
+        AnthropicAdapter(api_key="sk-ant-x", oauth_bearer="eyJtest")
+
+
+def test_oauth_bearer_mode_does_not_require_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OAuth-bearer mode must work even when ANTHROPIC_API_KEY is unset."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("MODELMELD_ANTHROPIC_API_KEY", raising=False)
+    adapter = AnthropicAdapter(oauth_bearer="eyJfake_jwt")
+    assert adapter.name == "anthropic"
+
+
+def _oauth_response_handler(captured: dict) -> "httpx.MockTransport":
+    """MockTransport that records the request + returns canned non-stream JSON."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["method"] = request.method
+        captured["headers"] = dict(request.headers)
+        if request.content:
+            captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_oauth_test",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-4-6",
+                "content": [{"type": "text", "text": "Hello from OAuth path"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 4, "output_tokens": 5},
+            },
+        )
+
+    return httpx.MockTransport(handler)
+
+
+async def test_chat_via_oauth_sends_bearer_authorization_header() -> None:
+    """OAuth path: POST hits /v1/messages with Authorization: Bearer <jwt>
+    (NOT x-api-key, which is the SDK/API-key-mode auth header)."""
+    captured: dict = {}
+    http = httpx.AsyncClient(transport=_oauth_response_handler(captured))
+    adapter = AnthropicAdapter(
+        oauth_bearer="eyJtest_subscription_jwt",
+        http_client=http,
+    )
+    try:
+        result = await adapter.chat(ChatCompletionRequest(
+            model="claude-sonnet-4-6",
+            messages=[UserMessage(role="user", content="hello")],
+            max_tokens=64,
+        ))
+    finally:
+        await adapter.close()
+
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/v1/messages"), captured["url"]
+    assert captured["headers"].get("authorization") == "Bearer eyJtest_subscription_jwt"
+    assert "x-api-key" not in captured["headers"]
+    assert captured["headers"].get("anthropic-version") == "2023-06-01"
+    # Response translation roundtrip — sanity check
+    assert result.choices[0].message.content == "Hello from OAuth path"
+
+
+async def test_chat_via_oauth_forwards_extra_headers() -> None:
+    """`extra_headers` (typically forwarded from the inbound /v1/messages
+    request) merge AFTER the OAuth defaults — customer beta flags win."""
+    captured: dict = {}
+    http = httpx.AsyncClient(transport=_oauth_response_handler(captured))
+    adapter = AnthropicAdapter(oauth_bearer="eyJjwt", http_client=http)
+    try:
+        await adapter.chat(
+            ChatCompletionRequest(
+                model="claude-sonnet-4-6",
+                messages=[UserMessage(role="user", content="hi")],
+                max_tokens=32,
+            ),
+            extra_headers={
+                "anthropic-beta": "prompt-caching-2024-07-31",
+                "user-agent": "Claude-Code/1.0",
+            },
+        )
+    finally:
+        await adapter.close()
+
+    assert captured["headers"].get("anthropic-beta") == "prompt-caching-2024-07-31"
+    assert captured["headers"].get("user-agent") == "Claude-Code/1.0"
+
+
+async def test_chat_via_oauth_wraps_upstream_error() -> None:
+    """4xx from api.anthropic.com (e.g., expired token) surfaces as AdapterError."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            401,
+            json={"error": {"type": "authentication_error", "message": "Invalid bearer"}},
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = AnthropicAdapter(oauth_bearer="eyJexpired", http_client=http)
+    try:
+        with pytest.raises(AdapterError, match="Anthropic OAuth"):
+            await adapter.chat(ChatCompletionRequest(
+                model="claude-sonnet-4-6",
+                messages=[UserMessage(role="user", content="hi")],
+                max_tokens=32,
+            ))
+    finally:
+        await adapter.close()
+
+
+async def test_stream_chat_via_oauth_parses_sse_events() -> None:
+    """Streaming OAuth path: parses Anthropic SSE format manually and
+    yields ChatCompletionChunks for each text delta."""
+    sse_body = (
+        "event: message_start\n"
+        'data: {"type":"message_start","message":{"id":"msg_1","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"usage":{"input_tokens":4,"output_tokens":0}}}\n'
+        "\n"
+        "event: content_block_start\n"
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n'
+        "\n"
+        "event: content_block_delta\n"
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}\n'
+        "\n"
+        "event: content_block_delta\n"
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" world"}}\n'
+        "\n"
+        "event: message_stop\n"
+        'data: {"type":"message_stop"}\n'
+        "\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=sse_body.encode("utf-8"),
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = AnthropicAdapter(oauth_bearer="eyJjwt", http_client=http)
+    try:
+        chunks: list = []
+        async for chunk in adapter.stream_chat(ChatCompletionRequest(
+            model="claude-sonnet-4-6",
+            messages=[UserMessage(role="user", content="hi")],
+            max_tokens=32,
+            stream=True,
+        )):
+            chunks.append(chunk)
+    finally:
+        await adapter.close()
+
+    # The translator yields at least one chunk per content_block_delta
+    # event with text. We expect "Hello" then " world" to surface.
+    texts: list[str] = []
+    for chunk in chunks:
+        for choice in chunk.choices:
+            if choice.delta and choice.delta.content:
+                texts.append(choice.delta.content)
+    joined = "".join(texts)
+    assert "Hello" in joined and "world" in joined
+
+
+async def test_close_releases_http_client_in_oauth_mode() -> None:
+    """OAuth-mode adapter owns its httpx client when one wasn't passed
+    in. close() should aclose() it — defense against client leak."""
+    adapter = AnthropicAdapter(oauth_bearer="eyJjwt")
+    # When http_client wasn't passed, adapter owns it
+    assert adapter._owns_http is True
+    # close() must not raise even though no actual HTTP traffic flowed.
+    await adapter.close()
+
+
+# ---------------------------------------------------------------------------
 # Gated integration test against the real Anthropic API
 # ---------------------------------------------------------------------------
 

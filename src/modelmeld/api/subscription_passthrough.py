@@ -118,12 +118,8 @@ def _build_passthrough_adapter(
             from modelmeld.adapters.codex_passthrough import CodexPassthroughAdapter
             return CodexPassthroughAdapter(access_token=auth.token)
         if vendor is PassthroughVendor.ANTHROPIC:
-            # Sprint 5 work: the AnthropicAdapter learns OAuth-bearer
-            # mode. Construction signature here will become:
-            #   AnthropicAdapter(oauth_bearer=auth.token)
-            # Until that extension lands, this branch surfaces a clean
-            # "not yet implemented" error rather than half-working code.
-            return None
+            from modelmeld.adapters.anthropic_adapter import AnthropicAdapter
+            return AnthropicAdapter(oauth_bearer=auth.token)
     except AdapterError:
         logger.exception(
             "subscription_passthrough adapter construction failed vendor=%s",
