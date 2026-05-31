@@ -74,6 +74,7 @@ def _build_test_app(
     entries: list[ModelEntry],
     adapters: dict[str, ProviderAdapter],
     quality_threshold: float = 0.80,
+    settings: GatewaySettings | None = None,
 ):
     registry = ModelRegistry(entries)
     scout = CapabilityScout(
@@ -82,7 +83,7 @@ def _build_test_app(
         eligible_providers=frozenset(adapters.keys()),
     )
     return build_app(
-        settings=GatewaySettings(),
+        settings=settings or GatewaySettings(),
         router=CapabilityRouter(scout=scout, adapters_by_provider=adapters),
         model_registry=registry,
     )
@@ -183,6 +184,59 @@ async def test_agent_role_echo_absent_when_no_hint() -> None:
     resp = await _post(app, _payload("hello"))
     assert resp.status_code == 200
     assert "x-modelmeld-agent-role" not in resp.headers
+
+
+# ---------------------------------------------------------------------------
+# Audit header: `x-modelmeld-routed-model` reflects the registry canonical
+# ---------------------------------------------------------------------------
+
+
+async def test_routed_model_header_uses_canonical_when_dispatch_uses_provider_slug() -> None:
+    """Some registries store BOTH a canonical `model_id` and a distinct
+    `provider_model_id` (the string the adapter actually dispatches
+    against upstream — useful when multiple providers serve the same
+    logical model under different catalog conventions). When the two
+    differ, the capability router's `model_id_override` carries the
+    dispatch form. The audit header should consistently expose the
+    canonical instead — that's the value the rest of the audit-headers
+    contract keys on, and the value most clients' cost-tracking logic
+    expects to round-trip.
+
+    Reverse-lookup matches on (provider, served_id) and returns the
+    canonical from the registry entry. Falls back to the served value
+    when no registry match (transition-safe).
+    """
+    adapter = _FakeAdapter("test-provider")
+    entry = ModelEntry(
+        model_id="canonical-name",
+        provider="test-provider",
+        provider_model_id="some/dispatch-form",
+        context_window=100000,
+        cost_per_m_input=0.04, cost_per_m_output=0.04,
+        task_scores={"simple_qa": 0.85},
+        last_updated="2026-05-31", source="test",
+    )
+    registry = ModelRegistry([entry])
+    scout = CapabilityScout(
+        registry=registry,
+        quality_threshold=0.80,
+        eligible_providers=frozenset({"test-provider"}),
+    )
+    app = build_app(
+        settings=GatewaySettings(),
+        router=CapabilityRouter(
+            scout=scout, adapters_by_provider={"test-provider": adapter},
+        ),
+        model_registry=registry,
+    )
+
+    resp = await _post(app, _payload("ping"))
+    assert resp.status_code == 200
+    # Canonical model_id, not the dispatch form
+    assert resp.headers["x-modelmeld-routed-model"] == "canonical-name"
+    # The dispatch-form string never appears in any header value
+    for v in resp.headers.values():
+        assert "some/dispatch-form" not in v
 
 
 # ---------------------------------------------------------------------------

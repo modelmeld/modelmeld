@@ -415,6 +415,7 @@ async def anthropic_messages(
             input_tokens=input_tokens,
             cache_status=cache_status,
             native_request=body,
+            model_registry=getattr(fastapi_request.app.state, "model_registry", None),
             extra_anthropic_headers=extra_anthropic_headers,
         )
 
@@ -436,7 +437,10 @@ async def anthropic_messages(
         lookup = await completion_cache.get(cache_key)
         if lookup.hit and lookup.value is not None:
             response.headers["x-modelmeld-cache"] = "hit"
-            for key, value in _routing_headers(decision, redactions, None).items():
+            for key, value in _routing_headers(
+                decision, redactions, None,
+                model_registry=getattr(fastapi_request.app.state, "model_registry", None),
+            ).items():
                 response.headers[key] = value
             await _fire_success(
                 hooks, request_id, started, outgoing, decision, redactions, None,
@@ -458,7 +462,10 @@ async def anthropic_messages(
         )
         if sem_lookup.hit and sem_lookup.value is not None:
             response.headers["x-modelmeld-cache"] = "hit-semantic"
-            for key, value in _routing_headers(decision, redactions, None).items():
+            for key, value in _routing_headers(
+                decision, redactions, None,
+                model_registry=getattr(fastapi_request.app.state, "model_registry", None),
+            ).items():
                 response.headers[key] = value
             # Backfill exact cache so identical follow-ups skip the embedding hop
             if completion_cache is not None and cache_key is not None:
@@ -519,7 +526,10 @@ async def anthropic_messages(
             ) from secondary
 
     # Routing + cache-status response headers.
-    for key, value in _routing_headers(decision, redactions, failover_from).items():
+    for key, value in _routing_headers(
+        decision, redactions, failover_from,
+        model_registry=getattr(fastapi_request.app.state, "model_registry", None),
+    ).items():
         response.headers[key] = value
 
     # Cache write-through.
@@ -676,6 +686,7 @@ async def _stream_messages_with_failover(
     cache_status: str | None = None,
     native_request: object | None = None,
     extra_anthropic_headers: dict[str, str] | None = None,
+    model_registry: object | None = None,
 ) -> StreamingResponse:
     """Mirror of chat.py `_stream_with_failover` but emits Anthropic SSE.
 
@@ -724,7 +735,10 @@ async def _stream_messages_with_failover(
             )
             raise HTTPException(status_code=502, detail="fallback stream open failed")
 
-    headers = _routing_headers(decision, redactions, failover_from)
+    headers = _routing_headers(
+        decision, redactions, failover_from,
+        model_registry=model_registry,
+    )
     if cache_status is not None:
         headers["x-modelmeld-cache"] = cache_status
 

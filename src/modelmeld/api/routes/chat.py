@@ -203,6 +203,7 @@ async def chat_completions(
             identity, memory, mem_identity, token_counter,
             cache_status=cache_status,
             hints=hints,
+            model_registry=getattr(fastapi_request.app.state, "model_registry", None),
         )
 
     # Exact-match cache, then semantic cache fallback.
@@ -219,7 +220,11 @@ async def chat_completions(
         lookup = await completion_cache.get(cache_key)
         if lookup.hit and lookup.value is not None:
             response.headers["x-modelmeld-cache"] = "hit"
-            for key, value in _routing_headers(decision, redactions, None, hints=hints).items():
+            for key, value in _routing_headers(
+                decision, redactions, None,
+                hints=hints,
+                model_registry=getattr(fastapi_request.app.state, "model_registry", None),
+            ).items():
                 response.headers[key] = value
             await _fire_success(
                 hooks, request_id, started, outgoing, decision, redactions, None,
@@ -238,7 +243,11 @@ async def chat_completions(
         )
         if sem_lookup.hit and sem_lookup.value is not None:
             response.headers["x-modelmeld-cache"] = "hit-semantic"
-            for key, value in _routing_headers(decision, redactions, None, hints=hints).items():
+            for key, value in _routing_headers(
+                decision, redactions, None,
+                hints=hints,
+                model_registry=getattr(fastapi_request.app.state, "model_registry", None),
+            ).items():
                 response.headers[key] = value
             # Backfill the exact-match cache so identical follow-ups skip
             # the embedding round-trip entirely.
@@ -265,6 +274,7 @@ async def chat_completions(
         completion_cache=completion_cache, cache_key=cache_key, cache_ttl=cache_ttl,
         semantic_cache=semantic_cache, served_model=served_model,
         hints=hints,
+        model_registry=getattr(fastapi_request.app.state, "model_registry", None),
     )
 
 
@@ -374,6 +384,7 @@ async def _completion_with_failover(
     semantic_cache: SemanticCompletionCache | None = None,
     served_model: str | None = None,
     hints: RoutingHints | None = None,
+    model_registry: object | None = None,
 ) -> ChatCompletion:
     failover_from = None
     try:
@@ -401,7 +412,11 @@ async def _completion_with_failover(
                 ),
             ) from secondary
 
-    for key, value in _routing_headers(decision, redactions, failover_from, hints=hints).items():
+    for key, value in _routing_headers(
+        decision, redactions, failover_from,
+        hints=hints,
+        model_registry=model_registry,
+    ).items():
         response.headers[key] = value
     if completion_cache is not None and cache_key is not None:
         response.headers["x-modelmeld-cache"] = "miss"
@@ -453,6 +468,7 @@ async def _stream_with_failover(
     *,
     cache_status: str | None = None,
     hints: RoutingHints | None = None,
+    model_registry: object | None = None,
 ) -> StreamingResponse:
     failover_from: str | None = None
     primary_aiter, first_chunk, primary_error = await _try_open_stream(
@@ -480,7 +496,11 @@ async def _stream_with_failover(
             )
             raise HTTPException(status_code=502, detail="fallback stream open failed")
 
-    headers = _routing_headers(decision, redactions, failover_from, hints=hints)
+    headers = _routing_headers(
+        decision, redactions, failover_from,
+        hints=hints,
+        model_registry=model_registry,
+    )
     if cache_status is not None:
         headers["x-modelmeld-cache"] = cache_status
     return StreamingResponse(
@@ -932,18 +952,60 @@ def _apply_model_override(
     return request.model_copy(update={"model": decision.model_id_override})
 
 
+def _canonical_model_id_for_header(
+    served_model_id: str | None,
+    adapter_name: str | None,
+    model_registry: object | None,
+) -> str | None:
+    """Return the canonical registry `model_id` for the audit header.
+
+    The capability router's `RoutingDecision.model_id_override` carries
+    whatever value the adapter dispatches against upstream. When a
+    registry entry has a distinct `provider_model_id` field (some
+    multi-provider registries store both the canonical model_id and a
+    provider-specific dispatch form), the dispatch value can differ
+    from the canonical. The audit header should consistently expose
+    the canonical — that's the value the rest of the audit-headers
+    contract (and most clients' cost-tracking logic) keys on.
+
+    Reverse-lookup: find the registry entry where the provider matches
+    AND (model_id == served OR provider_model_id == served). Return
+    its canonical model_id. Falls back to the served value when no
+    match — preserves the header during transitions where the registry
+    might not yet contain the relevant entry.
+    """
+    if served_model_id is None or model_registry is None:
+        return served_model_id
+    entries_fn = getattr(model_registry, "all_entries_multi", None)
+    if entries_fn is None:
+        entries_fn = getattr(model_registry, "all_entries", None)
+    if entries_fn is None:
+        return served_model_id
+    for entry in entries_fn():
+        if adapter_name and entry.provider != adapter_name:
+            continue
+        if entry.model_id == served_model_id or entry.provider_model_id == served_model_id:
+            return entry.model_id
+    return served_model_id
+
+
 def _routing_headers(
     decision: RoutingDecision,
     redactions: list[Redaction],
     failover_from: object | None,
     hints: RoutingHints | None = None,
+    model_registry: object | None = None,
 ) -> dict[str, str]:
+    adapter_name = decision.adapter.name
     headers = {
-        "x-modelmeld-routed-to": decision.adapter.name,
+        "x-modelmeld-routed-to": adapter_name,
         "x-modelmeld-tier": str(decision.tier),
     }
     if decision.model_id_override:
-        headers["x-modelmeld-routed-model"] = decision.model_id_override
+        canonical = _canonical_model_id_for_header(
+            decision.model_id_override, adapter_name, model_registry,
+        )
+        headers["x-modelmeld-routed-model"] = canonical or decision.model_id_override
     # Echo the agent-role hint (if any) so multi-agent-framework users
     # (OpenClaw / AutoGen / CrewAI / LangGraph) can grep response
     # headers and confirm their sub-agent declaration reached the
