@@ -620,6 +620,93 @@ async def test_auto_alias_single_marker_does_not_escalate() -> None:
     assert "escalated=no" in decision.rationale
 
 
+async def test_long_context_request_picks_long_context_model_when_short_context_models_filtered() -> None:
+    """Sprint 4 (B-3): when a request's input + response budget exceeds
+    the smaller OSS models' context windows (131k-256k), the scout's
+    _required_context_window filter must select the long-context option
+    (llama-4-scout at 1M tokens) instead of failing routing.
+
+    Tests the FILTER, not provider availability — at the time of
+    writing, llama-4-scout has no overlay entries for cloud-OSS
+    providers, so production-environment routing still requires vllm
+    self-hosting for >256k requests. The filter itself works
+    correctly; bridging to cloud-OSS is tracked separately.
+    """
+    from modelmeld.api.schemas import ChatCompletionRequest, UserMessage
+
+    registry = ModelRegistry([
+        # Short-context options (~131k) — would be eligible by score
+        # but filtered out by context-window requirement
+        _entry("llama-3.3-70b", "openrouter", 0.10, 0.32,
+               coding=0.78, reasoning=0.74, context_window=131_072),
+        _entry("gpt-oss-120b", "openrouter", 0.04, 0.18,
+               coding=0.74, reasoning=0.78, context_window=131_072),
+        # Medium-context (256k) — also filtered out by a >256k request
+        _entry("qwen3-coder-next", "openrouter", 0.11, 0.80,
+               coding=0.78, reasoning=0.72, context_window=262_144),
+        # Long-context (1M) — the only model that fits
+        _entry("llama-4-scout", "vllm", 0.45, 0.45,
+               coding=0.74, reasoning=0.78, context_window=1_048_576),
+    ])
+    scout = CapabilityScout(registry=registry, quality_threshold=0.70)
+
+    # Build a request whose input + response budget exceeds 256k. Prefix
+    # with a coding-shaped opener so the classifier picks 'coding' (the
+    # bulk content is opaque to the classifier but the opener tips it).
+    # ~1.2M chars / 4 chars-per-token ≈ 300k input tokens; + 2048
+    # max_tokens response; × 1.2 headroom ≈ 363k required context window.
+    # That fits llama-4-scout (1M) but NOT qwen3-coder-next (256k).
+    large_input = "refactor this code into smaller functions:\n" + ("def foo(): return 1\n" * 60_000)
+    req = ChatCompletionRequest(
+        model="anthropic/modelmeld-saver",  # OSS-only policy
+        messages=[UserMessage(role="user", content=large_input)],
+        max_tokens=2048,
+    )
+
+    decision = await scout.choose(req)
+
+    assert decision.chosen_model_id == "llama-4-scout", (
+        f"Expected llama-4-scout (1M context) for the 300k-token input, "
+        f"got {decision.chosen_model_id}. Smaller models should be "
+        f"filtered out by the context-window requirement. "
+        f"Rationale: {decision.rationale}"
+    )
+
+
+async def test_medium_context_request_picks_qwen3_coder_next_not_long_context_model() -> None:
+    """Sprint 4 boundary check: a request that fits in 256k should pick
+    qwen3-coder-next (cheaper) over llama-4-scout (more expensive but
+    overcapacity). The context-window filter is an admission filter,
+    not a preference — the picker still chooses cheapest among admitted.
+    """
+    from modelmeld.api.schemas import ChatCompletionRequest, UserMessage
+
+    registry = ModelRegistry([
+        _entry("llama-3.3-70b", "openrouter", 0.10, 0.32,
+               coding=0.78, reasoning=0.74, context_window=131_072),
+        _entry("qwen3-coder-next", "openrouter", 0.11, 0.80,
+               coding=0.78, reasoning=0.72, context_window=262_144),
+        _entry("llama-4-scout", "vllm", 0.45, 0.45,
+               coding=0.74, reasoning=0.78, context_window=1_048_576),
+    ])
+    scout = CapabilityScout(registry=registry, quality_threshold=0.70)
+
+    # ~140k input tokens (fits qwen3-coder-next at 256k but not
+    # llama-3.3-70b at 131k); cheapest qualifying = qwen3-coder-next.
+    medium_input = "refactor this code:\n" + ("def foo(): return 1\n" * 28_000)
+    req = ChatCompletionRequest(
+        model="anthropic/modelmeld-saver",
+        messages=[UserMessage(role="user", content=medium_input)],
+        max_tokens=2048,
+    )
+
+    decision = await scout.choose(req)
+    assert decision.chosen_model_id == "qwen3-coder-next", (
+        f"Expected qwen3-coder-next (256k) for medium-context request, "
+        f"got {decision.chosen_model_id}. Rationale: {decision.rationale}"
+    )
+
+
 async def test_auto_alias_falls_back_to_oss_reasoner_when_no_frontier_adapter() -> None:
     """Sprint 3 (B-2): AUTO with reasoning markers must NOT 503 when the
     operator has no frontier adapter configured. Should pick the best
