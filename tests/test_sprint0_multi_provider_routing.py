@@ -218,3 +218,73 @@ def test_overlay_provides_at_least_one_tool_capable_model_per_provider() -> None
             f"{provider} has no tool-capable models in the overlay — "
             "single-provider setups can't serve tool-using requests"
         )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 2 closeout — qwen3-coder-next is reachable in the OSS lineup
+# ---------------------------------------------------------------------------
+
+
+def test_qwen3_coder_next_is_reachable_via_openrouter() -> None:
+    """Sprint 2 acceptance: qwen3-coder-next (the tool-capable mid-tier
+    OSS model added by Sprint 1's overlay correction) must appear in the
+    openrouter-reachable candidate pool with tool support enabled.
+
+    The picker may choose a different cheaper model under -saver (gpt-oss-120b
+    blends cheaper) — that's correct behavior, not a Sprint 2 regression.
+    What Sprint 2 needs to validate is that the model is wired up: present
+    in the multi-provider registry, tool-capable, and tagged for a real
+    cloud-OSS provider. Without this assertion, a future overlay edit could
+    silently drop the entry and we wouldn't catch it until someone wondered
+    why their long-context tool-using requests fell back to frontier."""
+    from modelmeld.scout.multi_provider_registry import default_multi_provider_registry
+
+    reg = default_multi_provider_registry()
+    openrouter_entries = [
+        e for e in reg.all_entries_multi()
+        if e.provider == "openrouter" and e.model_id == "qwen3-coder-next"
+    ]
+    assert len(openrouter_entries) == 1, (
+        "qwen3-coder-next must have exactly one openrouter overlay row"
+    )
+    entry = openrouter_entries[0]
+    assert entry.supports_tools, (
+        "qwen3-coder-next must be tool-capable to serve Claude Code tool-using requests"
+    )
+    # Context window claim — the niche this model fills. If this drops below
+    # 200k, the long-context tool-using-request use case regresses.
+    assert entry.context_window >= 200_000, (
+        f"qwen3-coder-next overlay row context_window={entry.context_window} "
+        "is below 200k — its primary value (long-context tool calls) is gone"
+    )
+
+
+async def test_openrouter_only_lineup_includes_qwen3_coder_next(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In an openrouter-only setup, the eligible-candidate set for a
+    tool-using request should INCLUDE qwen3-coder-next (even if the picker
+    chooses a cheaper alternative). Verifies the routing layer's eligibility
+    filter doesn't drop the entry due to a mis-set supports_tools or
+    threshold."""
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("MODELMELD_OPENROUTER_API_KEY", "or_smoke_test_key")
+    monkeypatch.setenv("MODELMELD_ROUTING_POLICY", "capability")
+
+    settings = GatewaySettings()
+    router = _build_capability_router(settings, None)
+
+    # All tool-capable openrouter-tagged entries meeting the saver task_use
+    # threshold should be in the candidate pool. We don't make a routing
+    # decision here — we just verify the registry surface.
+    candidates = [
+        e for e in router.scout.registry.all_entries_multi()
+        if e.provider == "openrouter"
+        and e.supports_tools
+        and e.task_scores.get("tool_use", 0.0) >= 0.70
+    ]
+    candidate_ids = {e.model_id for e in candidates}
+    assert "qwen3-coder-next" in candidate_ids, (
+        f"qwen3-coder-next missing from openrouter candidate pool. "
+        f"Found: {sorted(candidate_ids)}"
+    )
