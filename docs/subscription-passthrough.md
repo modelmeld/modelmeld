@@ -202,6 +202,31 @@ isn't re-validated, so a rotation mid-response doesn't cause a
 mid-stream failure. The next request will hit 401, reload, and
 proceed.
 
+## What headers we forward to upstream
+
+Subscription passthrough is meant to be wire-level-indistinguishable
+from a direct Claude Code (or direct Codex CLI) call. For the
+**Claude Max path** we forward two distinct sets of inbound headers
+to `api.anthropic.com`:
+
+| Header set | When forwarded | Why |
+|---|---|---|
+| `anthropic-beta`, `anthropic-version` | Always (both API-key and OAuth paths) | Customer-controlled protocol features. Without forwarding, beta features the customer activates silently fall back at our boundary. |
+| `User-Agent`, `X-Stainless-arch`, `X-Stainless-async`, `X-Stainless-lang`, `X-Stainless-os`, `X-Stainless-package-version`, `X-Stainless-retry-count`, `X-Stainless-runtime`, `X-Stainless-runtime-version`, `X-Stainless-timeout` | OAuth-bearer mode only | SDK-identifying headers that ride a real Claude Code call. Preserving them at the gateway boundary keeps OAuth requests indistinguishable on the wire. Forwarding them on the API-key path would be wrong — there the gateway IS the calling SDK. |
+
+Headers explicitly NOT forwarded (regression-guarded by tests):
+`Authorization` (we re-set with the inbound bearer), any `X-ModelMeld-BYOK-*`
+header (those terminate at our gateway), any `X-ModelMeld-*` routing-hint
+headers (gateway-internal control plane).
+
+For the **Codex path**, we currently only forward the OAuth bearer
+(via the SDK's `api_key` parameter) and the `ChatGPT-Account-ID`
+header (via SDK `default_headers`). Inbound headers from the
+`/v1/chat/completions` request are NOT yet forwarded to
+`chatgpt.com/backend-api/codex` — the AsyncOpenAI SDK's per-request
+header-injection surface needs surgery to plumb them through.
+Tracked as a follow-up.
+
 ## Disabling on short notice
 
 If you need to kill subscription passthrough immediately (vendor

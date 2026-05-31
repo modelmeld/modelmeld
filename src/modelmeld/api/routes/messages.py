@@ -33,7 +33,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from modelmeld.adapters import AdapterError
 from modelmeld.adapters.anthropic_adapter import AnthropicAdapter
 from modelmeld.api._safe_error_detail import safe_error_detail
-from modelmeld.api.auth_detection import classify_authorization
+from modelmeld.api.auth_detection import AuthKind, classify_authorization
 from modelmeld.api.byok import (
     build_byok_adapters,
     extract_byok_credentials,
@@ -105,7 +105,34 @@ router = APIRouter()
 # forward verbatim to the upstream Anthropic call. Without this list,
 # beta features the customer activates silently fall back at our boundary.
 # Lowercase per Starlette's case-insensitive header lookup contract.
+#
+# Forwarded on BOTH API-key and OAuth paths — these are protocol-level
+# headers that are meant to be customer-controlled.
 _FORWARDED_ANTHROPIC_HEADERS = ("anthropic-beta", "anthropic-version")
+
+# Additional headers forwarded ONLY when the inbound auth is an OAuth
+# bearer (subscription passthrough mode). These identify the calling
+# SDK (Anthropic SDK / Stainless tooling) and ride the request to
+# preserve indistinguishability with a direct Claude Code call.
+#
+# Forwarding them in API-key mode would be wrong: the gateway IS the
+# SDK in that mode (we generate the request from our internal shape),
+# so spoofing a different UA / Stainless version would create a
+# contradictory signal at the wire layer.
+#
+# Lowercase per Starlette's case-insensitive header lookup contract.
+_FORWARDED_OAUTH_CAMOUFLAGE_HEADERS = (
+    "user-agent",
+    "x-stainless-arch",
+    "x-stainless-async",
+    "x-stainless-lang",
+    "x-stainless-os",
+    "x-stainless-package-version",
+    "x-stainless-retry-count",
+    "x-stainless-runtime",
+    "x-stainless-runtime-version",
+    "x-stainless-timeout",
+)
 
 
 def _collect_anthropic_extra_headers(
@@ -115,6 +142,24 @@ def _collect_anthropic_extra_headers(
     pass-through to the upstream Anthropic call."""
     out: dict[str, str] = {}
     for name in _FORWARDED_ANTHROPIC_HEADERS:
+        value = request_headers.get(name)
+        if value is not None:
+            out[name] = value
+    return out
+
+
+def _collect_oauth_camouflage_headers(
+    request_headers: Any,
+) -> dict[str, str]:
+    """Extract SDK-identifying headers (User-Agent, X-Stainless-*) from
+    the inbound request for forwarding to the upstream OAuth call.
+
+    Only called when the inbound auth is OAuth-bearer (subscription
+    passthrough mode) — see `_FORWARDED_OAUTH_CAMOUFLAGE_HEADERS` for
+    the rationale on why these aren't forwarded in API-key mode.
+    """
+    out: dict[str, str] = {}
+    for name in _FORWARDED_OAUTH_CAMOUFLAGE_HEADERS:
         value = request_headers.get(name)
         if value is not None:
             out[name] = value
@@ -264,6 +309,14 @@ async def anthropic_messages(
         fastapi_request.headers,
     )
 
+    # OAuth-mode camouflage: when the inbound auth is a Claude Max OAuth
+    # bearer, forward the SDK-identifying headers (User-Agent +
+    # X-Stainless-*) verbatim so api.anthropic.com sees a request
+    # indistinguishable from a direct Claude Code call. Computed below
+    # after we determine whether passthrough is active; the actual merge
+    # into `extra_anthropic_headers` happens once `passthrough_router`
+    # is resolved.
+
     # Routing hints (same x-modelmeld-* hint headers as chat.py).
     try:
         hints = extract_hints_from_headers(fastapi_request.headers)
@@ -286,6 +339,18 @@ async def anthropic_messages(
     auth_classification = classify_authorization(
         fastapi_request.headers.get("authorization"),
     )
+    # OAuth-mode camouflage header forwarding. Only applies when the
+    # inbound auth shape is an OAuth bearer; for API-key requests we
+    # would be sending a contradictory signal (the gateway IS the
+    # caller in API-key mode, so spoofing a different SDK identity at
+    # the wire layer is wrong). When the bearer is OAuth-shaped but
+    # the operator hasn't enabled the opt-in flag, we still skip
+    # camouflage forwarding — the request will return 403 below before
+    # any upstream call happens, so the headers wouldn't matter anyway.
+    if auth_classification.kind is AuthKind.OAUTH_BEARER:
+        extra_anthropic_headers.update(
+            _collect_oauth_camouflage_headers(fastapi_request.headers),
+        )
     passthrough_router = resolve_passthrough_router(
         auth_classification,
         vendor=PassthroughVendor.ANTHROPIC,

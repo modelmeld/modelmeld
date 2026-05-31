@@ -15,6 +15,9 @@ mock adapter (no real backend calls). Validates that:
   - Tool-use round-trips through the route
   - Error cases (missing max_tokens, image blocks, stream=true) hit
     the right HTTP status codes
+  - Anthropic protocol headers + OAuth-mode SDK camouflage headers
+    are extracted correctly from inbound requests (header-forwarding
+    audit unit tests at the bottom)
 """
 
 from __future__ import annotations
@@ -861,3 +864,107 @@ async def test_count_tokens_translation_error_returns_400() -> None:
             }],
         })
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Header-forwarding audit — what the /v1/messages route extracts from
+# the inbound request and ships to the upstream Anthropic call. Two
+# distinct sets:
+#
+#   1. _collect_anthropic_extra_headers — anthropic-beta, anthropic-version.
+#      Customer-controlled protocol headers. Forwarded on both API-key
+#      and OAuth paths.
+#
+#   2. _collect_oauth_camouflage_headers — User-Agent + X-Stainless-*.
+#      SDK-identifying headers. Forwarded ONLY when the inbound auth is
+#      an OAuth bearer (subscription passthrough) so api.anthropic.com
+#      sees a request indistinguishable from a direct Claude Code call.
+#      NOT forwarded on API-key paths — in that mode the gateway IS
+#      the calling SDK, so spoofing Claude Code's identity at the wire
+#      layer would be a contradictory signal.
+# ---------------------------------------------------------------------------
+
+from modelmeld.api.routes.messages import (  # noqa: E402
+    _collect_anthropic_extra_headers,
+    _collect_oauth_camouflage_headers,
+)
+
+
+def test_anthropic_extra_headers_extracts_protocol_headers() -> None:
+    headers = {
+        "anthropic-beta": "prompt-caching-2024-07-31",
+        "anthropic-version": "2023-06-01",
+        "x-other": "ignored",
+    }
+    out = _collect_anthropic_extra_headers(headers)
+    assert out == {
+        "anthropic-beta": "prompt-caching-2024-07-31",
+        "anthropic-version": "2023-06-01",
+    }
+
+
+def test_anthropic_extra_headers_returns_empty_when_none_present() -> None:
+    out = _collect_anthropic_extra_headers({"content-type": "application/json"})
+    assert out == {}
+
+
+def test_oauth_camouflage_headers_extracts_sdk_identifying_headers() -> None:
+    """User-Agent + the X-Stainless-* family forward verbatim. These are
+    what api.anthropic.com sees when Claude Code (or any Anthropic-SDK
+    client) calls direct — preserving them at the gateway boundary keeps
+    OAuth-bearer requests indistinguishable on the wire."""
+    headers = {
+        "user-agent": "claude-cli/2.1.150 (external, cli)",
+        "x-stainless-lang": "js",
+        "x-stainless-package-version": "0.27.0",
+        "x-stainless-os": "MacOS",
+        "x-stainless-arch": "arm64",
+        "x-stainless-runtime": "node",
+        "x-stainless-runtime-version": "v22.5.1",
+        "x-stainless-retry-count": "0",
+        "x-stainless-async": "false",
+        "x-stainless-timeout": "60",
+        # Headers NOT in the camouflage set must NOT come through:
+        "x-modelmeld-byok-anthropic": "sk-ant-shouldnotleak",
+        "authorization": "Bearer eyJsensitive",
+        "anthropic-beta": "should-use-the-other-collector",
+    }
+    out = _collect_oauth_camouflage_headers(headers)
+    assert out == {
+        "user-agent": "claude-cli/2.1.150 (external, cli)",
+        "x-stainless-lang": "js",
+        "x-stainless-package-version": "0.27.0",
+        "x-stainless-os": "MacOS",
+        "x-stainless-arch": "arm64",
+        "x-stainless-runtime": "node",
+        "x-stainless-runtime-version": "v22.5.1",
+        "x-stainless-retry-count": "0",
+        "x-stainless-async": "false",
+        "x-stainless-timeout": "60",
+    }
+
+
+def test_oauth_camouflage_headers_returns_empty_when_none_present() -> None:
+    """Inbound requests that don't carry any SDK-identifying headers
+    (e.g. a generic curl call) get nothing forwarded — no fake camouflage."""
+    out = _collect_oauth_camouflage_headers({"content-type": "application/json"})
+    assert out == {}
+
+
+def test_oauth_camouflage_headers_skips_byok_and_authorization() -> None:
+    """Authorization + BYOK headers must never end up in the
+    outgoing-camouflage set, even if accidentally added to the
+    `_FORWARDED_OAUTH_CAMOUFLAGE_HEADERS` constant in a future refactor.
+
+    This is a regression guard — the function should ONLY forward
+    explicitly-listed safe headers.
+    """
+    headers = {
+        "authorization": "Bearer eyJsecret-bearer",
+        "x-modelmeld-byok-anthropic": "sk-ant-secret",
+        "x-modelmeld-byok-openai": "sk-secret",
+    }
+    out = _collect_oauth_camouflage_headers(headers)
+    assert out == {}
+    assert "authorization" not in out
+    assert "x-modelmeld-byok-anthropic" not in out
