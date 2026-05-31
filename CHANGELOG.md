@@ -14,6 +14,18 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.5.0](https://github.com/modelmeld/modelmeld/compare/v0.4.0...v0.5.0) (2026-05-31)
+
+
+### Features
+
+* **api:** echo x-modelmeld-agent-role in response headers ([d024a02](https://github.com/modelmeld/modelmeld/commit/d024a0227968bb98094613ac1d27af6373127cf0))
+
+
+### Documentation
+
+* **integrations:** add opencode integration guide ([74b16c9](https://github.com/modelmeld/modelmeld/commit/74b16c9ec2ff9c670eda331702ea31dce383b6c5))
+
 ## [0.4.0](https://github.com/modelmeld/modelmeld/compare/v0.3.1...v0.4.0) (2026-05-31)
 
 
