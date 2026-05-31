@@ -45,10 +45,14 @@ All response headers are emitted by the gateway and can be read by any integrati
 - **Meaning:** The actual model the gateway sent upstream; may differ from `model` in the request
 
 ### x-modelmeld-task-category
-- **Meaning:** Final category used for routing (`coding`, `reasoning`, `simple_qa`, `summarization`, `tool_use`)
+- **Meaning:** Final / effective category that scout used for routing (`coding`, `reasoning`, `simple_qa`, `summarization`, `tool_use`). When the request carried `x-modelmeld-agent-role`, this is the category the role was resolved to (e.g. `agent-role: planner` → `task-category: reasoning`).
 
 ### x-modelmeld-category-source
 - **Meaning:** One of `classifier`, `hint:task_category`, `hint:agent_role` — indicates whether a hint took effect
+
+### x-modelmeld-agent-role
+- **Meaning:** Echo of the inbound `x-modelmeld-agent-role` request header, normalized (lowercase, hyphens → underscores). Emitted only when the request supplied an agent-role hint. Lets multi-agent frameworks confirm their sub-agent declaration reached the gateway intact; pair with `x-modelmeld-task-category` to verify the role-to-category resolution end-to-end.
+- **Example:** Request `x-modelmeld-agent-role: planner` → response carries `x-modelmeld-agent-role: planner` + `x-modelmeld-task-category: reasoning` + `x-modelmeld-category-source: hint:agent_role`.
 
 ### x-modelmeld-task-score
 - **Meaning:** Chosen model's score on that category (float)

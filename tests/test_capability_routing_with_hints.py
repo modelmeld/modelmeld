@@ -163,6 +163,26 @@ async def test_agent_role_header_maps_to_category() -> None:
     assert resp.headers["x-modelmeld-task-category"] == "coding"
     assert resp.headers["x-modelmeld-category-source"] == "hint:agent_role"
     assert resp.headers["x-modelmeld-routed-model"] == "gpt-mini"
+    # Echo: agent_role hint is mirrored back so multi-agent frameworks
+    # (OpenClaw / AutoGen / CrewAI / LangGraph) can grep response headers
+    # and confirm their sub-agent declaration reached the gateway intact.
+    assert resp.headers["x-modelmeld-agent-role"] == "coder"
+
+
+async def test_agent_role_echo_absent_when_no_hint() -> None:
+    """No hint sent → no echo header on the response."""
+    coder_only = _FakeAdapter("openai")
+    app = _build_test_app(
+        entries=[
+            _entry("gpt-mini", "openai", 1.0, 3.0, coding=0.85, simple_qa=0.85),
+        ],
+        adapters={"openai": coder_only},
+        quality_threshold=0.80,
+    )
+
+    resp = await _post(app, _payload("hello"))
+    assert resp.status_code == 200
+    assert "x-modelmeld-agent-role" not in resp.headers
 
 
 # ---------------------------------------------------------------------------

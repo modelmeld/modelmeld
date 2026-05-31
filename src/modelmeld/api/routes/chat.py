@@ -23,6 +23,7 @@ from modelmeld.api.byok import (
 )
 from modelmeld.api.routing_hints import (
     RoutingHintError,
+    RoutingHints,
     extract_hints_from_headers,
 )
 from modelmeld.api.schemas import (
@@ -201,6 +202,7 @@ async def chat_completions(
             rt, decision, outgoing, redactions, hooks, request_id, started,
             identity, memory, mem_identity, token_counter,
             cache_status=cache_status,
+            hints=hints,
         )
 
     # Exact-match cache, then semantic cache fallback.
@@ -217,7 +219,7 @@ async def chat_completions(
         lookup = await completion_cache.get(cache_key)
         if lookup.hit and lookup.value is not None:
             response.headers["x-modelmeld-cache"] = "hit"
-            for key, value in _routing_headers(decision, redactions, None).items():
+            for key, value in _routing_headers(decision, redactions, None, hints=hints).items():
                 response.headers[key] = value
             await _fire_success(
                 hooks, request_id, started, outgoing, decision, redactions, None,
@@ -236,7 +238,7 @@ async def chat_completions(
         )
         if sem_lookup.hit and sem_lookup.value is not None:
             response.headers["x-modelmeld-cache"] = "hit-semantic"
-            for key, value in _routing_headers(decision, redactions, None).items():
+            for key, value in _routing_headers(decision, redactions, None, hints=hints).items():
                 response.headers[key] = value
             # Backfill the exact-match cache so identical follow-ups skip
             # the embedding round-trip entirely.
@@ -262,6 +264,7 @@ async def chat_completions(
         identity, memory, mem_identity, token_counter,
         completion_cache=completion_cache, cache_key=cache_key, cache_ttl=cache_ttl,
         semantic_cache=semantic_cache, served_model=served_model,
+        hints=hints,
     )
 
 
@@ -370,6 +373,7 @@ async def _completion_with_failover(
     cache_ttl: int = DEFAULT_CACHE_TTL_SECONDS,
     semantic_cache: SemanticCompletionCache | None = None,
     served_model: str | None = None,
+    hints: RoutingHints | None = None,
 ) -> ChatCompletion:
     failover_from = None
     try:
@@ -397,7 +401,7 @@ async def _completion_with_failover(
                 ),
             ) from secondary
 
-    for key, value in _routing_headers(decision, redactions, failover_from).items():
+    for key, value in _routing_headers(decision, redactions, failover_from, hints=hints).items():
         response.headers[key] = value
     if completion_cache is not None and cache_key is not None:
         response.headers["x-modelmeld-cache"] = "miss"
@@ -448,6 +452,7 @@ async def _stream_with_failover(
     token_counter: TokenCounter | None,
     *,
     cache_status: str | None = None,
+    hints: RoutingHints | None = None,
 ) -> StreamingResponse:
     failover_from: str | None = None
     primary_aiter, first_chunk, primary_error = await _try_open_stream(
@@ -475,7 +480,7 @@ async def _stream_with_failover(
             )
             raise HTTPException(status_code=502, detail="fallback stream open failed")
 
-    headers = _routing_headers(decision, redactions, failover_from)
+    headers = _routing_headers(decision, redactions, failover_from, hints=hints)
     if cache_status is not None:
         headers["x-modelmeld-cache"] = cache_status
     return StreamingResponse(
@@ -931,6 +936,7 @@ def _routing_headers(
     decision: RoutingDecision,
     redactions: list[Redaction],
     failover_from: object | None,
+    hints: RoutingHints | None = None,
 ) -> dict[str, str]:
     headers = {
         "x-modelmeld-routed-to": decision.adapter.name,
@@ -938,6 +944,14 @@ def _routing_headers(
     }
     if decision.model_id_override:
         headers["x-modelmeld-routed-model"] = decision.model_id_override
+    # Echo the agent-role hint (if any) so multi-agent-framework users
+    # (OpenClaw / AutoGen / CrewAI / LangGraph) can grep response
+    # headers and confirm their sub-agent declaration reached the
+    # gateway intact. `x-modelmeld-task-category` already carries the
+    # resolved category that scout used for routing; the role echo
+    # lets users verify the input → category mapping end-to-end.
+    if hints is not None and hints.agent_role:
+        headers["x-modelmeld-agent-role"] = hints.agent_role
     cap = getattr(decision, "capability_decision", None)
     if cap is not None:
         headers["x-modelmeld-task-category"] = cap.task_category

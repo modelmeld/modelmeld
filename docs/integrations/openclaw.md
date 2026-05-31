@@ -51,7 +51,29 @@ sub_agents:
       x-modelmeld-quality-threshold: "0.90"
 ```
 
-For the full list of response headers and their meanings, see the [Routing-hint headers reference](../routing-hints.md).
+## Verifying sub-agent routing landed correctly
+
+Every response carries the resolved role + category in the headers, so
+you can grep `--verbose` output (or your HTTP-inspection tool of choice)
+and confirm each sub-agent's hint reached the gateway intact:
+
+```text
+# Request from OpenClaw's planner sub-agent
+x-modelmeld-agent-role: planner
+x-modelmeld-task-category: reasoning
+x-modelmeld-category-source: hint:agent_role
+x-modelmeld-routed-model: deepseek-v4-pro
+```
+
+`agent-role` echoes what you sent; `task-category` shows what the gateway
+resolved the role to (the lookup is documented in [the routing-hint
+reference](../routing-hints.md)); `category-source` confirms the routing
+decision came from your hint (not the heuristic classifier). If you set
+the role but `category-source` is `classifier`, your config never reached
+the gateway — check the YAML.
+
+For the full list of response headers and their meanings, see the
+[Routing-hint headers reference](../routing-hints.md).
 
 ## Verifying the cost win
 
