@@ -46,31 +46,53 @@ _DISPLAY_NAMES: dict[str, str] = {
 async def list_models(request: Request) -> ModelList:
     """GET /v1/models — OpenAI + Anthropic-native compatible model discovery.
 
-    Returns one Model row per `settings.available_models`. Each row carries
-    BOTH the OpenAI fields (`object: "model"`, `created: int`) AND the
-    Anthropic-native fields (`type: "model"`, `created_at: ISO 8601`); the
-    list envelope carries both `object: "list"` AND the Anthropic-native
+    Each row carries BOTH the OpenAI fields (`object: "model"`,
+    `created: int`) AND the Anthropic-native fields (`type: "model"`,
+    `created_at: ISO 8601`); the list envelope carries both
+    `object: "list"` AND the Anthropic-native
     `has_more`/`first_id`/`last_id` pagination markers. Clients on either
     spec see a valid payload (each ignores fields it doesn't recognize).
 
-    `display_name` is populated when the gateway has a human-readable name
-    registered in `_DISPLAY_NAMES` — required for Claude Code's /model
-    picker (CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1) to render the
-    entry. The picker filters to IDs prefixed `claude` or `anthropic`,
-    which is why we also surface the `anthropic/modelmeld-*` auto-route
-    aliases below.
+    Two modes for the advertised list:
+
+    - **Auto-derive (default, `settings.available_models == []`):** every
+      `model_id` in `app.state.model_registry` gets advertised. Adding a
+      model to the registry / overlay automatically surfaces it in
+      `/v1/models` — no parallel config push needed. This is the right
+      mode for production gateways.
+
+    - **Explicit (operator sets `MODELMELD_AVAILABLE_MODELS`):** advertise
+      exactly the listed IDs, ignoring the registry. Used to hide
+      deprecated-but-still-routable models or restrict to a known-stable
+      subset for a tenant.
+
+    The three `anthropic/modelmeld-*` policy aliases are auto-appended in
+    both modes (they aren't registry-backed). `display_name` is populated
+    from `_DISPLAY_NAMES` when available — required for Claude Code's
+    /model picker (CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1) to
+    render the entry. The picker filters to IDs prefixed `claude` or
+    `anthropic`, which is why the `anthropic/modelmeld-*` aliases are
+    the only auto-route IDs that show up there.
     """
     settings: GatewaySettings = request.app.state.settings
+    if settings.available_models:
+        # Explicit-list mode — operator pinned this exact set.
+        model_ids = list(settings.available_models)
+    else:
+        # Auto-derive mode — pull every model the registry knows about.
+        # Sorted for stable output (clients sometimes parse this).
+        registry = getattr(request.app.state, "model_registry", None)
+        model_ids = sorted({e.model_id for e in registry.all_entries()}) if registry else []
+
     data: list[Model] = []
-    for model_id in settings.available_models:
+    for model_id in model_ids:
         data.append(Model(
             id=model_id,
             owned_by=settings.owner,
             display_name=_DISPLAY_NAMES.get(model_id),
         ))
     # Anthropic-namespaced auto-route aliases — only surface when not
-    # already in available_models (avoid duplicates) so an operator who
-    # decides to remove them can do so via `available_models` config.
+    # already in the derived/explicit list (avoid duplicates).
     advertised_ids = {m.id for m in data}
     for alias_id, display in _DISPLAY_NAMES.items():
         if alias_id.startswith("anthropic/") and alias_id not in advertised_ids:

@@ -102,6 +102,110 @@ def test_models_reflects_settings() -> None:
         assert extra.startswith("anthropic/")
 
 
+def test_models_auto_derives_from_registry_when_available_models_empty() -> None:
+    """Default `available_models=[]` → /v1/models reflects everything the
+    registry knows about. This is the production-default mode; it keeps the
+    advertised lineup in sync with routing knowledge automatically so the
+    operator doesn't have to push a parallel env-var update for every model
+    add. Fixes the deployment-drift bug that caused api.modelmeld.ai to
+    advertise a stale 4-model catalog for months after the OSS overlay
+    expanded.
+    """
+    from modelmeld.config import GatewaySettings
+    from modelmeld.scout.registry import ModelEntry, ModelRegistry
+
+    registry = ModelRegistry([
+        ModelEntry(
+            model_id="alpha",
+            provider="openai",
+            context_window=100000,
+            cost_per_m_input=1.0,
+            cost_per_m_output=3.0,
+            task_scores={"coding": 0.8},
+            last_updated="2026-05-31",
+            source="test",
+        ),
+        ModelEntry(
+            model_id="beta",
+            provider="anthropic",
+            context_window=200000,
+            cost_per_m_input=2.0,
+            cost_per_m_output=10.0,
+            task_scores={"coding": 0.9},
+            last_updated="2026-05-31",
+            source="test",
+        ),
+        ModelEntry(
+            model_id="gamma",
+            provider="vllm",
+            context_window=32000,
+            cost_per_m_input=0.5,
+            cost_per_m_output=0.5,
+            task_scores={"coding": 0.7},
+            last_updated="2026-05-31",
+            source="test",
+        ),
+    ])
+    # Default settings: available_models is empty → auto-derive engages
+    settings = GatewaySettings()
+    assert settings.available_models == []
+    client = TestClient(build_app(settings, model_registry=registry))
+
+    ids = [m["id"] for m in client.get("/v1/models").json()["data"]]
+    # All three registry models are advertised (sorted alphabetically)
+    assert "alpha" in ids
+    assert "beta" in ids
+    assert "gamma" in ids
+    # The three policy aliases get auto-appended in both modes
+    assert "anthropic/modelmeld-saver" in ids
+    assert "anthropic/modelmeld-auto" in ids
+    assert "anthropic/modelmeld-quality" in ids
+
+
+def test_models_explicit_list_ignores_registry() -> None:
+    """When operator pins `available_models=[...]`, that list wins —
+    the registry is bypassed for the advertised set. Used to restrict
+    surface area (hide deprecated-but-still-routable models, limit a
+    tenant to a known-stable subset, etc.).
+    """
+    from modelmeld.config import GatewaySettings
+    from modelmeld.scout.registry import ModelEntry, ModelRegistry
+
+    # Registry has 3 models; operator restricts to just 1.
+    registry = ModelRegistry([
+        ModelEntry(
+            model_id="model-in-registry-a",
+            provider="openai",
+            context_window=100000,
+            cost_per_m_input=1.0,
+            cost_per_m_output=3.0,
+            task_scores={"coding": 0.8},
+            last_updated="2026-05-31",
+            source="test",
+        ),
+        ModelEntry(
+            model_id="model-in-registry-b",
+            provider="openai",
+            context_window=100000,
+            cost_per_m_input=1.0,
+            cost_per_m_output=3.0,
+            task_scores={"coding": 0.8},
+            last_updated="2026-05-31",
+            source="test",
+        ),
+    ])
+    settings = GatewaySettings(available_models=["only-this-one"])
+    client = TestClient(build_app(settings, model_registry=registry))
+
+    ids = [m["id"] for m in client.get("/v1/models").json()["data"]]
+    # The explicit pin wins — registry contents are NOT advertised.
+    assert "only-this-one" in ids
+    assert "model-in-registry-a" not in ids
+    assert "model-in-registry-b" not in ids
+    # Policy aliases still appended (they're not registry-backed).
+    assert "anthropic/modelmeld-saver" in ids
+
+
 def test_chat_completions_returns_openai_shape() -> None:
     response = make_client().post(
         "/v1/chat/completions",

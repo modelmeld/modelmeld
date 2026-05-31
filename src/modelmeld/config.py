@@ -24,16 +24,23 @@ class GatewaySettings(BaseSettings):
     port: int = 8080
     log_level: str = "info"
 
-    # Models advertised by /v1/models. The routing-aware registry replaces
-    # this in capability mode; for now it's just what we tell clients we support.
-    available_models: list[str] = Field(
-        default_factory=lambda: [
-            "gpt-5-mini",
-            "claude-haiku-4-5-20251001",
-            "claude-sonnet-4-6",
-            "qwen2.5-coder-7b-instruct",
-        ]
-    )
+    # Models advertised by /v1/models. When empty (the default), the
+    # advertise list is auto-derived from `app.state.model_registry` —
+    # whatever models the loaded registry knows about get advertised.
+    # That keeps the advertised lineup in sync with the routing knowledge
+    # automatically: every model add to the registry / overlay surfaces
+    # in /v1/models without a parallel config push.
+    #
+    # Operators who want to RESTRICT the advertised list (e.g., hide
+    # deprecated-but-still-routable models, or limit to a known-stable
+    # subset for a production tenant) can populate this list explicitly
+    # via `MODELMELD_AVAILABLE_MODELS` env var (JSON array). When set,
+    # the explicit list wins and the registry is ignored for /v1/models
+    # output.
+    #
+    # The three `anthropic/modelmeld-*` policy aliases are auto-appended
+    # by the route in both modes — they're not registry-backed.
+    available_models: list[str] = Field(default_factory=list)
     owner: str = "modelmeld"
 
     # Routing policy.
