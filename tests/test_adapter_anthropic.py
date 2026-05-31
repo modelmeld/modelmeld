@@ -187,11 +187,11 @@ async def test_health_returns_true() -> None:
 # OAuth-bearer mode (Sprint 5 subscription passthrough)
 # ---------------------------------------------------------------------------
 
-import json  # noqa: E402
+import json
 
-import httpx  # noqa: E402
+import httpx
 
-from modelmeld.api.schemas import UserMessage  # noqa: E402
+from modelmeld.api.schemas import UserMessage
 
 
 def test_rejects_both_api_key_and_oauth_bearer() -> None:
@@ -209,7 +209,7 @@ def test_oauth_bearer_mode_does_not_require_api_key(monkeypatch: pytest.MonkeyPa
     assert adapter.name == "anthropic"
 
 
-def _oauth_response_handler(captured: dict) -> "httpx.MockTransport":
+def _oauth_response_handler(captured: dict) -> httpx.MockTransport:
     """MockTransport that records the request + returns canned non-stream JSON."""
 
     def handler(request: httpx.Request) -> httpx.Response:

@@ -14,7 +14,30 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
-## [0.3.1](https://github.com/modelmeld/modelmeld/compare/v0.3.0...v0.3.1) (2026-05-31)
+## [0.4.0](https://github.com/modelmeld/modelmeld/compare/v0.3.1...v0.4.0) (2026-05-31)
+
+
+### Features
+
+  - **subscription passthrough**: Self-hosters can now point Claude Code
+    (Claude Max) and OpenAI Codex CLI / `llm-openai-via-codex` (ChatGPT
+    Plus/Pro/Business) at this gateway and route via OAuth bearer to the
+    vendor backend. Gated by `MODELMELD_ALLOW_SUBSCRIPTION_PASSTHROUGH=1`.
+    Self-host only — see `docs/subscription-passthrough.md` for ToS
+    guardrails and setup.
+  - **scout**: `-auto` policy now falls back to a reasoning-capable OSS
+    model when no frontier adapter is available, instead of returning 503.
+  - **audit**: `RequestCompletedEvent` carries `quality_threshold` and
+    `requires_tool_use` so downstream audit consumers can diagnose
+    unexpected routing decisions post-hoc.
+
+
+### Documentation
+
+  - New: `docs/subscription-passthrough.md` — setup guide for the OAuth
+    passthrough flows.
+  - New: `docs/subscription-passthrough-codex-feasibility.md` and
+    `-wire-format.md` — ToS posture and technical reference.
 
 
 ### Bug Fixes

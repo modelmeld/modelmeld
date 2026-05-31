@@ -34,10 +34,6 @@ from modelmeld.adapters import AdapterError
 from modelmeld.adapters.anthropic_adapter import AnthropicAdapter
 from modelmeld.api._safe_error_detail import safe_error_detail
 from modelmeld.api.auth_detection import classify_authorization
-from modelmeld.api.subscription_passthrough import (
-    PassthroughVendor,
-    resolve_passthrough_router,
-)
 from modelmeld.api.byok import (
     build_byok_adapters,
     extract_byok_credentials,
@@ -66,6 +62,10 @@ from modelmeld.api.schemas import ChatCompletion, ChatCompletionRequest, TextPar
 from modelmeld.api.schemas_anthropic import (
     AnthropicMessagesRequest,
     AnthropicMessagesResponse,
+)
+from modelmeld.api.subscription_passthrough import (
+    PassthroughVendor,
+    resolve_passthrough_router,
 )
 from modelmeld.cache import (
     DEFAULT_CACHE_TTL_SECONDS,

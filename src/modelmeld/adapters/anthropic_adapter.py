@@ -135,8 +135,14 @@ class AnthropicAdapter(ProviderAdapter):
         if extra_headers:
             params["extra_headers"] = dict(extra_headers)
 
+        # Type narrow: oauth_bearer is None here, so api-key path was taken
+        # and self._client is the AsyncAnthropic instance. Capture in a
+        # local so the closure below sees the narrowed type.
+        assert self._client is not None
+        client = self._client
+
         async def _call():
-            return await self._client.messages.create(**params)
+            return await client.messages.create(**params)
 
         try:
             sdk_message = await retry_async(
@@ -162,10 +168,14 @@ class AnthropicAdapter(ProviderAdapter):
         params.pop("extra_headers", None)
         params["stream"] = False
         headers = _oauth_request_headers(self._oauth_bearer, extra_headers)
-        assert self._http is not None  # narrowed by _oauth_bearer not None
+        # Capture the http client in a local; the closure below can't
+        # narrow `self._http` because pyright treats attribute access
+        # across awaits as possibly-mutated.
+        assert self._http is not None
+        http = self._http
 
         async def _call() -> dict[str, Any]:
-            response = await self._http.post(
+            response = await http.post(
                 f"{self._base_url}/v1/messages",
                 content=json.dumps(params).encode("utf-8"),
                 headers=headers,
@@ -206,8 +216,13 @@ class AnthropicAdapter(ProviderAdapter):
         if extra_headers:
             params["extra_headers"] = dict(extra_headers)
 
+        # Type narrow: oauth_bearer is None here (oauth branch returned
+        # above), so the api-key path was taken and self._client exists.
+        assert self._client is not None
+        client = self._client
+
         async def _open_stream():
-            return await self._client.messages.create(**params)
+            return await client.messages.create(**params)
 
         try:
             stream = await retry_async(
