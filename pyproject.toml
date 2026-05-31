@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "modelmeld"
-version = "0.3.1"
+version = "0.4.0"
 description = "AI gateway with capability-based routing across providers + bring-your-own-key passthrough. OpenAI- and Anthropic-compatible. Drop-in for Claude Code, Cursor, Aider, Cline, Continue."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
