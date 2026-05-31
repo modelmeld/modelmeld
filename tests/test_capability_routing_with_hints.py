@@ -186,6 +186,99 @@ async def test_agent_role_echo_absent_when_no_hint() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Audit-header redaction: 3rd-party hosted-fleet provider names + slug leaks
+# ---------------------------------------------------------------------------
+
+
+async def test_routed_to_header_redacts_openrouter_to_hosted_fleet() -> None:
+    """`x-modelmeld-routed-to: openrouter` would publicly disclose a
+    3rd-party hosted-fleet provider whose ToS prohibits resale. Customer-
+    facing audit headers must use the generic `hosted-fleet` label
+    instead. Same for fireworks + together."""
+    openrouter_adapter = _FakeAdapter("openrouter")
+    app = _build_test_app(
+        entries=[
+            _entry("phi", "openrouter", 0.04, 0.04, simple_qa=0.85),
+        ],
+        adapters={"openrouter": openrouter_adapter},
+        quality_threshold=0.80,
+    )
+    resp = await _post(app, _payload("ping"))
+    assert resp.status_code == 200
+    # Redacted: never expose the brand name to customers
+    assert resp.headers["x-modelmeld-routed-to"] == "hosted-fleet"
+    assert "openrouter" not in resp.headers["x-modelmeld-routed-to"]
+
+
+async def test_routed_to_header_passes_through_direct_provider_names() -> None:
+    """Direct providers (anthropic, openai, google, vllm) pass through
+    unchanged — those names are either customer-facing brands or our
+    own infra label, not 3rd-party-fleet leaks."""
+    openai_adapter = _FakeAdapter("openai")
+    anthropic_adapter = _FakeAdapter("anthropic")
+    vllm_adapter = _FakeAdapter("vllm")
+
+    for adapter, expected_label in [
+        (openai_adapter, "openai"),
+        (anthropic_adapter, "anthropic"),
+        (vllm_adapter, "vllm"),
+    ]:
+        app = _build_test_app(
+            entries=[
+                _entry(f"m-{expected_label}", expected_label, 1.0, 1.0, simple_qa=0.85),
+            ],
+            adapters={expected_label: adapter},
+            quality_threshold=0.80,
+        )
+        resp = await _post(app, _payload("ping"))
+        assert resp.status_code == 200
+        assert resp.headers["x-modelmeld-routed-to"] == expected_label
+
+
+async def test_routed_model_header_translates_slug_to_canonical() -> None:
+    """`x-modelmeld-routed-model` must expose the canonical registry
+    model_id (e.g., `phi-4-mini-instruct`), NOT the upstream-provider
+    slug (e.g., `microsoft/phi-4-mini-instruct`). The slug leaks the
+    provider's catalog naming convention — same class of disclosure
+    as exposing the provider's brand name in `routed-to`.
+    """
+    # Build a registry entry with a distinct provider_model_id (slug).
+    fleet_adapter = _FakeAdapter("openrouter")
+    entry = ModelEntry(
+        model_id="phi-4-mini-instruct",       # canonical
+        provider="openrouter",
+        provider_model_id="microsoft/phi-4-mini-instruct",  # slug
+        context_window=100000,
+        cost_per_m_input=0.04, cost_per_m_output=0.04,
+        task_scores={"simple_qa": 0.85},
+        last_updated="2026-05-31", source="test",
+    )
+    registry = ModelRegistry([entry])
+    scout = CapabilityScout(
+        registry=registry,
+        quality_threshold=0.80,
+        eligible_providers=frozenset({"openrouter"}),
+    )
+    from modelmeld.api.server import build_app
+    from modelmeld.config import GatewaySettings
+    app = build_app(
+        settings=GatewaySettings(),
+        router=CapabilityRouter(
+            scout=scout, adapters_by_provider={"openrouter": fleet_adapter},
+        ),
+        model_registry=registry,
+    )
+
+    resp = await _post(app, _payload("ping"))
+    assert resp.status_code == 200
+    # Canonical, not the slug
+    assert resp.headers["x-modelmeld-routed-model"] == "phi-4-mini-instruct"
+    # Slug must NEVER appear in audit headers
+    for v in resp.headers.values():
+        assert "microsoft/" not in v
+
+
+# ---------------------------------------------------------------------------
 # quality_threshold header overrides scout config
 # ---------------------------------------------------------------------------
 
