@@ -44,6 +44,7 @@ Drop-in setup for the coding agents customers actually run day to day:
 - [**Aider**](aider.md) — pair-programming CLI via LiteLLM
 - [**Cline**](cline.md) — VS Code agent with XML tool calls
 - [**Continue.dev**](continue.md) — VS Code/JetBrains with per-role models
+- [**opencode**](opencode.md) — SST's terminal coding agent with a native provider system
 - [**Zed**](zed.md) — editor agent panel via OpenAI-compatible provider
 
 ## Agent framework guides

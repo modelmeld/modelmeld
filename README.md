@@ -150,8 +150,8 @@ Two complementary surfaces:
     SDK, anthropic SDK, AutoGen, CrewAI, LangGraph, OpenClaw. Anything
     built on OpenAI or Anthropic SDKs works as a drop-in.
   - **Should work, not yet live-tested**: Cursor, Continue, Cline,
-    Codex CLI. All speak OpenAI's `/v1/chat/completions` which is our
-    native dialect.
+    opencode, Codex CLI. All speak OpenAI's `/v1/chat/completions`
+    which is our native dialect.
   - **Routing-hint headers** (`x-modelmeld-task-category`,
     `x-modelmeld-agent-role`, etc.) let frameworks declare task category
     and agent role explicitly instead of relying on the classifier.
