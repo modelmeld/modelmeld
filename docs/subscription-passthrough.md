@@ -141,6 +141,67 @@ Codex path or `anthropic` for the Claude Max path. If you see
 passthrough branch (typically: the opt-in flag isn't set, or your
 client sent an API key instead of an OAuth bearer).
 
+## Token rotation (Codex path)
+
+Codex CLI rotates the OAuth bearer in `~/.codex/auth.json` when the
+current bearer is close to expiry. The `CodexPassthroughAdapter`
+handles this automatically when constructed with `auth_json_path`:
+
+- On a 401 from `chatgpt.com/backend-api/codex`, the adapter re-reads
+  `auth.json` exactly once
+- If the bearer in the file has changed (CLI rotated it), the SDK
+  client is rebuilt with the new bearer and the request retries once
+- If the file is missing, corrupted, or unchanged, the original 401
+  surfaces to the caller — the operator needs to re-authenticate via
+  `codex login` (the adapter has no way to drive the OAuth flow
+  itself)
+
+The other two auth paths — explicit `access_token=` and the
+`CODEX_ACCESS_TOKEN` env var — have no on-disk source to re-read, so
+401 there bubbles up to the gateway client (typically as a 502 with a
+sanitized error detail). Restart the gateway after running
+`codex login` to pick up the rotated token.
+
+For the Claude Max path, the OAuth bearer is sent by the client per
+request (Claude Code reads it from its own credential store), so
+rotation is the client's responsibility — the gateway forwards
+whatever bearer arrives in the `Authorization` header verbatim.
+
+## Troubleshooting
+
+### Inbound 403 — "subscription_passthrough_disabled"
+The opt-in flag isn't set on the gateway. Confirm the gateway
+process has `MODELMELD_ALLOW_SUBSCRIPTION_PASSTHROUGH=1` exported and
+restart. The flag is read at startup, not per-request.
+
+### Inbound 401 from `api.anthropic.com` (Claude Max path)
+Your Claude Max OAuth bearer is expired or revoked. Re-run Claude
+Code's OAuth flow (`claude` → re-authenticate). The bearer flows
+client → gateway → upstream verbatim; we don't refresh it on your
+behalf.
+
+### Inbound 401 from `chatgpt.com/backend-api/codex` (Codex path)
+With `auth_json_path` configured: the adapter has already attempted a
+one-shot reload. If you're seeing a 401 in the gateway logs, either
+(a) Codex CLI hasn't rotated the bearer yet — run `codex login` to
+force it, or (b) the rotation produced an equally-invalid token, in
+which case `codex logout && codex login` and restart the gateway.
+
+### Routing didn't take the passthrough branch
+Check the `x-modelmeld-routed-to` response header. If it shows
+`openai` / `anthropic` rather than `codex_passthrough`, the gateway
+classified the inbound Authorization header as an API key, not an
+OAuth bearer. JWT-shaped bearers start with `eyJ` (the standard
+base64-encoded JWT header `{"alg":...`). API keys (`sk-ant-*` /
+`sk-*`) take the standard adapter path.
+
+### Token rotated mid-stream
+The SDK authenticates at stream-open time; the 401-on-stream-open path
+is handled identically to non-streaming chat. Mid-stream the bearer
+isn't re-validated, so a rotation mid-response doesn't cause a
+mid-stream failure. The next request will hit 401, reload, and
+proceed.
+
 ## Disabling on short notice
 
 If you need to kill subscription passthrough immediately (vendor

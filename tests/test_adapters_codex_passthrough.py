@@ -330,3 +330,178 @@ async def test_adapter_chat_passes_tools_through() -> None:
     assert "tools" in captured["body"]
     assert len(captured["body"]["tools"]) == 1
     assert captured["body"]["tools"][0]["function"]["name"] == "get_weather"
+
+
+# ---------------------------------------------------------------------------
+# Token reload on 401 (Codex CLI rotates the bearer in auth.json)
+# ---------------------------------------------------------------------------
+
+
+def _ok_response_body() -> dict:
+    return {
+        "id": "resp_ok",
+        "object": "response",
+        "output": [
+            {
+                "type": "message",
+                "content": [{"type": "output_text", "text": "ok"}],
+            },
+        ],
+        "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+    }
+
+
+def _401_response_body() -> dict:
+    return {"error": {"message": "expired_token", "type": "auth_error"}}
+
+
+def _build_token_aware_transport(
+    captured: list, valid_tokens: set[str],
+) -> httpx.MockTransport:
+    """MockTransport that returns 200 iff Authorization carries a valid token, else 401.
+
+    `captured` accumulates one entry per request observed. `valid_tokens`
+    is a set of bare bearer values (no "Bearer " prefix) that the mock
+    backend will accept.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        auth = request.headers.get("authorization", "")
+        bearer = auth.removeprefix("Bearer ").strip()
+        captured.append({"bearer": bearer, "url": str(request.url)})
+        if bearer in valid_tokens:
+            return httpx.Response(200, json=_ok_response_body())
+        return httpx.Response(401, json=_401_response_body())
+    return httpx.MockTransport(handler)
+
+
+async def test_chat_reloads_token_on_401_and_retries(tmp_path: Path) -> None:
+    """Codex CLI rotates the bearer in auth.json; adapter detects the upstream
+    401, re-reads the file, rebuilds the client, retries once with the new token.
+    """
+    auth_file = tmp_path / "auth.json"
+    auth_file.write_text(json.dumps({"tokens": {"access_token": "expired-token"}}))
+
+    captured: list = []
+    transport = _build_token_aware_transport(captured, valid_tokens={"rotated-token"})
+    http_client = httpx.AsyncClient(transport=transport)
+    adapter = CodexPassthroughAdapter(
+        auth_json_path=auth_file,
+        http_client=http_client,
+    )
+
+    # Simulate Codex CLI rotating the bearer in the file after adapter
+    # init but before the chat call (mimics: bearer expired between
+    # adapter construction and use; CLI auto-refreshed in the background).
+    auth_file.write_text(json.dumps({"tokens": {"access_token": "rotated-token"}}))
+
+    try:
+        result = await adapter.chat(ChatCompletionRequest(
+            model="gpt-5.4",
+            messages=[UserMessage(role="user", content="ping")],
+        ))
+    finally:
+        await adapter.close()
+
+    # Two upstream calls: first with stale, second with rotated.
+    assert len(captured) == 2
+    assert captured[0]["bearer"] == "expired-token"
+    assert captured[1]["bearer"] == "rotated-token"
+    assert result.choices[0].message.content == "ok"
+
+
+async def test_chat_surfaces_401_when_no_reload_path() -> None:
+    """access_token path can't re-resolve — 401 must surface promptly,
+    not loop reload-retries forever.
+    """
+    captured: list = []
+    transport = _build_token_aware_transport(captured, valid_tokens=set())
+    http_client = httpx.AsyncClient(transport=transport)
+    adapter = CodexPassthroughAdapter(
+        access_token="bad-token",
+        http_client=http_client,
+    )
+    try:
+        with pytest.raises(AdapterError, match="chat failed"):
+            await adapter.chat(ChatCompletionRequest(
+                model="gpt-5.4",
+                messages=[UserMessage(role="user", content="ping")],
+            ))
+    finally:
+        await adapter.close()
+    # At least one upstream call happened; we don't assert exact count
+    # (retry_async may retry on transient errors per its policy).
+    assert len(captured) >= 1
+    # Every captured call used the original bad token; no reload occurred.
+    assert all(c["bearer"] == "bad-token" for c in captured)
+
+
+async def test_chat_surfaces_401_when_reload_yields_same_token(tmp_path: Path) -> None:
+    """auth.json still has the (bad) token — reload returns False and the
+    401 surfaces. No infinite reload loop.
+    """
+    auth_file = tmp_path / "auth.json"
+    auth_file.write_text(json.dumps({"tokens": {"access_token": "stale-token"}}))
+
+    captured: list = []
+    transport = _build_token_aware_transport(captured, valid_tokens=set())
+    http_client = httpx.AsyncClient(transport=transport)
+    adapter = CodexPassthroughAdapter(
+        auth_json_path=auth_file,
+        http_client=http_client,
+    )
+    try:
+        with pytest.raises(AdapterError):
+            await adapter.chat(ChatCompletionRequest(
+                model="gpt-5.4",
+                messages=[UserMessage(role="user", content="ping")],
+            ))
+    finally:
+        await adapter.close()
+    # No request should have used a different token than the original.
+    assert all(c["bearer"] == "stale-token" for c in captured)
+
+
+# Direct unit tests on _try_reload_token() — bypass the SDK + mock layer.
+
+
+async def test_try_reload_token_returns_false_when_no_auth_path() -> None:
+    adapter = CodexPassthroughAdapter(access_token="direct-token")
+    assert await adapter._try_reload_token() is False
+
+
+async def test_try_reload_token_returns_false_when_token_unchanged(
+    tmp_path: Path,
+) -> None:
+    auth_file = tmp_path / "auth.json"
+    auth_file.write_text(json.dumps({"tokens": {"access_token": "same-token"}}))
+    adapter = CodexPassthroughAdapter(auth_json_path=auth_file)
+    assert await adapter._try_reload_token() is False
+
+
+async def test_try_reload_token_updates_state_when_token_rotated(
+    tmp_path: Path,
+) -> None:
+    auth_file = tmp_path / "auth.json"
+    auth_file.write_text(json.dumps({"tokens": {"access_token": "old-token"}}))
+    adapter = CodexPassthroughAdapter(auth_json_path=auth_file)
+    old_client = adapter._client
+
+    # Simulate Codex CLI rotation.
+    auth_file.write_text(json.dumps({"tokens": {"access_token": "rotated-token"}}))
+    assert await adapter._try_reload_token() is True
+    assert adapter._access_token == "rotated-token"
+    # The SDK client was rebuilt (api_key is baked at construction).
+    assert adapter._client is not old_client
+
+
+async def test_try_reload_token_returns_false_when_file_gone(tmp_path: Path) -> None:
+    """`codex logout` removes auth.json → reload returns False, doesn't raise.
+
+    The caller surfaces the original 401 to the operator who needs to
+    re-authenticate via the CLI — our adapter can't do that for them.
+    """
+    auth_file = tmp_path / "auth.json"
+    auth_file.write_text(json.dumps({"tokens": {"access_token": "before-logout"}}))
+    adapter = CodexPassthroughAdapter(auth_json_path=auth_file)
+    auth_file.unlink()
+    assert await adapter._try_reload_token() is False

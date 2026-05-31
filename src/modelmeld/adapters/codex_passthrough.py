@@ -192,6 +192,15 @@ class CodexPassthroughAdapter(ProviderAdapter):
     `account_id` (optional) is sent in the `ChatGPT-Account-ID` header
     when present. Codex CLI sets this for accounts in multiple
     Workspaces; single-account users typically don't need it.
+
+    Token rotation: when constructed with `auth_json_path`, the adapter
+    detects 401 responses from the upstream call, re-reads auth.json (the
+    Codex CLI rotates the OAuth bearer in that file when it expires),
+    and retries the request once with the refreshed token. The
+    explicit-`access_token` and `CODEX_ACCESS_TOKEN` env-var paths have no
+    on-disk file to re-read, so a 401 there surfaces to the caller and
+    the operator must rebuild the adapter (or run `codex login` and
+    restart the gateway).
     """
 
     name = "codex_passthrough"
@@ -208,7 +217,7 @@ class CodexPassthroughAdapter(ProviderAdapter):
         served_model: str | None = _DEFAULT_SERVED_MODEL,
     ) -> None:
         try:
-            from openai import AsyncOpenAI
+            from openai import AsyncOpenAI  # noqa: F401  # import-time check only
         except ImportError as e:
             raise AdapterError(
                 "CodexPassthroughAdapter requires the `openai` package. "
@@ -232,20 +241,66 @@ class CodexPassthroughAdapter(ProviderAdapter):
                 "or set CODEX_ACCESS_TOKEN env var."
             )
 
-        # The SDK uses api_key as the Bearer token value verbatim.
-        default_headers: dict[str, str] = {}
-        if resolved_account_id:
-            default_headers["ChatGPT-Account-ID"] = resolved_account_id
+        # Stash everything needed to rebuild the SDK client after a
+        # token reload. Path-based auth keeps reload eligibility; the
+        # other two sources can't re-resolve so `_auth_json_path = None`
+        # disables reload-on-401 cleanly.
+        self._access_token: str = token
+        self._account_id: str | None = resolved_account_id
+        self._auth_json_path: Path | None = (
+            Path(auth_json_path).expanduser() if auth_json_path else None
+        )
+        self._base_url = base_url
+        self._http_client_arg = http_client
+        self._retry_config = retry_config or RetryConfig()
+        self.served_model = served_model
 
-        self._client = AsyncOpenAI(
-            api_key=token,
-            base_url=base_url,
-            http_client=http_client,
+        self._client = self._build_async_openai_client()
+
+    def _build_async_openai_client(self) -> Any:
+        """Rebuild the AsyncOpenAI client from current `_access_token` + `_account_id`.
+
+        Called once at __init__ and again after each successful token
+        reload. The SDK bakes `api_key` in at construction so reload
+        requires a fresh client instance, not just an attribute swap.
+        """
+        from openai import AsyncOpenAI
+        default_headers: dict[str, str] = {}
+        if self._account_id:
+            default_headers["ChatGPT-Account-ID"] = self._account_id
+        return AsyncOpenAI(
+            api_key=self._access_token,
+            base_url=self._base_url,
+            http_client=self._http_client_arg,
             default_headers=default_headers or None,
             max_retries=0,
         )
-        self._retry_config = retry_config or RetryConfig()
-        self.served_model = served_model
+
+    async def _try_reload_token(self) -> bool:
+        """Re-read auth.json after a 401. Return True iff the token changed.
+
+        Only meaningful when the adapter was constructed with
+        `auth_json_path` — explicit-token and env-var sources have no
+        on-disk file to re-read. Returns False (without raising) on
+        missing or corrupted file so the caller surfaces the original
+        401 to the operator (who needs to re-authenticate via the Codex
+        CLI; our adapter has no way to do that).
+        """
+        if self._auth_json_path is None:
+            return False
+        try:
+            new_token, new_account_id = _load_codex_auth(self._auth_json_path)
+        except CodexAuthFileError:
+            return False
+        if new_token == self._access_token:
+            return False  # CLI hasn't rotated yet
+        self._access_token = new_token
+        if new_account_id:
+            # Don't clobber an explicit constructor account_id with None
+            # if the rotated file omitted it.
+            self._account_id = new_account_id
+        self._client = self._build_async_openai_client()
+        return True
 
     async def chat(self, request: ChatCompletionRequest) -> ChatCompletion:
         request = self._apply_served_model(request)
@@ -265,7 +320,17 @@ class CodexPassthroughAdapter(ProviderAdapter):
             kwargs["tools"] = [t.model_dump(exclude_none=True) for t in request.tools]
 
         async def _call():
-            return await self._client.responses.create(**kwargs)
+            from openai import AuthenticationError
+            try:
+                return await self._client.responses.create(**kwargs)
+            except AuthenticationError:
+                # Codex CLI may have rotated the bearer in auth.json
+                # since we last loaded it. One-shot reload + retry. If
+                # the reload didn't change anything (no file source, or
+                # same token still on disk), surface the original 401.
+                if not await self._try_reload_token():
+                    raise
+                return await self._client.responses.create(**kwargs)
 
         try:
             sdk_response = await retry_async(
@@ -292,7 +357,17 @@ class CodexPassthroughAdapter(ProviderAdapter):
             kwargs["tools"] = [t.model_dump(exclude_none=True) for t in request.tools]
 
         async def _open_stream():
-            return await self._client.responses.create(**kwargs)
+            from openai import AuthenticationError
+            try:
+                return await self._client.responses.create(**kwargs)
+            except AuthenticationError:
+                # See chat() for the rationale on this reload-then-retry
+                # pattern. 401 can only happen at stream-open time (the
+                # SDK authenticates before yielding the iterator), so
+                # this catch covers all auth-failure stream paths.
+                if not await self._try_reload_token():
+                    raise
+                return await self._client.responses.create(**kwargs)
 
         try:
             stream = await retry_async(
