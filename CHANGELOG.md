@@ -14,6 +14,15 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.6.0](https://github.com/modelmeld/modelmeld/compare/v0.5.0...v0.6.0) (2026-05-31)
+
+
+### Features
+
+* **adapter:** Codex passthrough auto-reloads bearer on 401 (token rotation) ([2925184](https://github.com/modelmeld/modelmeld/commit/2925184ca73e404d04088724ad00f8c0c1365e19))
+* **api:** forward SDK camouflage headers on Anthropic OAuth passthrough ([1a13000](https://github.com/modelmeld/modelmeld/commit/1a13000770974a5a7a747fe7fc5cadac1d13095c))
+* **scout:** fingerprint opencode from self-identifying system prompts ([11455cb](https://github.com/modelmeld/modelmeld/commit/11455cb46ac3aea217894c8d5fd1fd867eb99f46))
+
 ## [0.5.0](https://github.com/modelmeld/modelmeld/compare/v0.4.0...v0.5.0) (2026-05-31)
 
 
