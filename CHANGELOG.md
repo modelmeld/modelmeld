@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.3.0](https://github.com/modelmeld/modelmeld/compare/v0.2.0...v0.3.0) (2026-05-31)
+
+
+### Features
+
+* **scout:** relocate benchmark fetcher infrastructure to Pro feed service ([e618da7](https://github.com/modelmeld/modelmeld/commit/e618da7c599ca812b78d13c38418853d0ab4a0d3))
+
 ## [0.2.0](https://github.com/modelmeld/modelmeld/compare/v0.1.3...v0.2.0) (2026-05-30)
 
 
