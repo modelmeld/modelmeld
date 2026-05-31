@@ -19,19 +19,25 @@ auto-generated section markers.
 
 ### Features
 
-* **adapter,api:** AnthropicAdapter OAuth-bearer mode + /v1/messages wiring ([01f7c0d](https://github.com/modelmeld/modelmeld/commit/01f7c0d4230c90d5bf6acc59fd68aa8c81ff690e))
-* **adapter:** CodexPassthroughAdapter for ChatGPT-subscription OAuth bearer ([bc2b293](https://github.com/modelmeld/modelmeld/commit/bc2b293ea636155b90721be8d9b28296669b8e53))
-* **api:** Authorization-header shape detection (subscription passthrough) ([80c1a98](https://github.com/modelmeld/modelmeld/commit/80c1a984deb9286aa74e6a0c797bda9ae67e6e82))
-* **api:** subscription passthrough wire-up for /v1/chat/completions ([473b183](https://github.com/modelmeld/modelmeld/commit/473b183e78099156188ca5ba08065a35ea560d55))
-* **hooks:** emit quality_threshold + requires_tool_use on RequestCompletedEvent ([d604f39](https://github.com/modelmeld/modelmeld/commit/d604f398514c3862378d8c8ca9da7dd1222b23bb))
-* **scout:** -auto falls back to OSS reasoner when no frontier adapter ([9f0e726](https://github.com/modelmeld/modelmeld/commit/9f0e726fe6b40b5fa03460bef0af9777076d84ee))
+  - **subscription passthrough**: Self-hosters can now point Claude Code
+    (Claude Max) and OpenAI Codex CLI / `llm-openai-via-codex` (ChatGPT
+    Plus/Pro/Business) at this gateway and route via OAuth bearer to the
+    vendor backend. Gated by `MODELMELD_ALLOW_SUBSCRIPTION_PASSTHROUGH=1`.
+    Self-host only — see `docs/subscription-passthrough.md` for ToS
+    guardrails and setup.
+  - **scout**: `-auto` policy now falls back to a reasoning-capable OSS
+    model when no frontier adapter is available, instead of returning 503.
+  - **audit**: `RequestCompletedEvent` carries `quality_threshold` and
+    `requires_tool_use` so downstream audit consumers can diagnose
+    unexpected routing decisions post-hoc.
 
 
 ### Documentation
 
-* subscription passthrough setup guide ([f1a1d3c](https://github.com/modelmeld/modelmeld/commit/f1a1d3cc50d66d4d31520688ef8af337bbe275bc))
-
-## [0.3.1](https://github.com/modelmeld/modelmeld/compare/v0.3.0...v0.3.1) (2026-05-31)
+  - New: `docs/subscription-passthrough.md` — setup guide for the OAuth
+    passthrough flows.
+  - New: `docs/subscription-passthrough-codex-feasibility.md` and
+    `-wire-format.md` — ToS posture and technical reference.
 
 
 ### Bug Fixes
