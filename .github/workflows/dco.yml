@@ -48,6 +48,22 @@ jobs:
 
             author_name="$(git log -1 --format='%an' "${commit}")"
             author_email="$(git log -1 --format='%ae' "${commit}")"
+
+            # Skip commits authored by GitHub App bots. They don't add new
+            # IP content (release-please bumps versions; dependabot bumps
+            # deps); requiring DCO signoff forces a manual amend on every
+            # release PR (caught on the v0.3.0 release PR, 2026-05-30).
+            # Bot commits are still gated by normal PR review; DCO is the
+            # wrong gate for them. All GitHub App bot author names end in
+            # "[bot]" — one pattern catches release-please, dependabot,
+            # github-actions, and any future-adopted bots.
+            case "${author_name}" in
+              *\[bot\])
+                echo "skip ${commit::8}: automation bot (${author_name})"
+                continue
+                ;;
+            esac
+
             expected="Signed-off-by: ${author_name} <${author_email}>"
 
             if git log -1 --format='%B' "${commit}" | grep -qiF "${expected}"; then
