@@ -27,7 +27,6 @@ from modelmeld.api.schemas import (
     UserMessage,
 )
 
-
 # ---------------------------------------------------------------------------
 # _load_codex_auth — file-reading happy path + error cases
 # ---------------------------------------------------------------------------
@@ -205,7 +204,7 @@ def test_adapter_priority_explicit_token_beats_env(
 # ---------------------------------------------------------------------------
 
 
-def _mock_responses_api_handler(captured: dict) -> "httpx.MockTransport":
+def _mock_responses_api_handler(captured: dict) -> httpx.MockTransport:
     """Build a MockTransport that captures one POST + returns a canned response."""
 
     def handler(request: httpx.Request) -> httpx.Response:

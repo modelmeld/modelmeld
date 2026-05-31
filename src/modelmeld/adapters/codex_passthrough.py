@@ -42,8 +42,8 @@ from modelmeld.api.schemas import (
     ChatCompletionChunk,
     ChatCompletionRequest,
     Choice,
-    ChunkChoice,
     ChoiceDelta,
+    ChunkChoice,
     ResponseMessage,
     Usage,
 )

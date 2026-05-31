@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 
 from modelmeld.adapters import AdapterError, ProviderAdapter
 from modelmeld.api._safe_error_detail import safe_error_detail
+from modelmeld.api.auth_detection import classify_authorization
 from modelmeld.api.byok import (
     build_byok_adapters,
     extract_byok_credentials,
@@ -30,6 +31,10 @@ from modelmeld.api.schemas import (
     ChatCompletionRequest,
     TextPart,
     UserMessage,
+)
+from modelmeld.api.subscription_passthrough import (
+    PassthroughVendor,
+    resolve_passthrough_router,
 )
 from modelmeld.cache import (
     DEFAULT_CACHE_TTL_SECONDS,
@@ -54,11 +59,6 @@ from modelmeld.memory import (
     assemble_context,
     extract_memory_identity,
     inject_into_request,
-)
-from modelmeld.api.auth_detection import classify_authorization
-from modelmeld.api.subscription_passthrough import (
-    PassthroughVendor,
-    resolve_passthrough_router,
 )
 from modelmeld.privacy import Redaction, Scrubber
 from modelmeld.router import Router, RouterError, RoutingDecision
