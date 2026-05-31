@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.6.2](https://github.com/modelmeld/modelmeld/compare/v0.6.1...v0.6.2) (2026-05-31)
+
+
+### Bug Fixes
+
+* **api:** redact 3rd-party provider names + slugs from audit headers ([74fe788](https://github.com/modelmeld/modelmeld/commit/74fe788953096981189f760c4feab5d5d9ee037b))
+
 ## [0.6.1](https://github.com/modelmeld/modelmeld/compare/v0.6.0...v0.6.1) (2026-05-31)
 
 
