@@ -46,6 +46,12 @@ jobs:
           # Create at: github.com/settings/personal-access-tokens/new
           # Add as secret `RELEASE_PLEASE_TOKEN` in repo settings.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # Add DCO signoff trailer to the release-please-generated commit.
+          # The PAT makes release-please author commits as the token owner
+          # (kevinsmith51), so a matching signoff line satisfies the DCO
+          # check without requiring a manual amend on every release PR
+          # (caught on the 0.3.1 release PR, 2026-05-30).
+          signoff: "kevinsmith51 <121474548+kevinsmith51@users.noreply.github.com>"
           release-type: python
           package-name: modelmeld
           # `pyproject.toml` is where release-please writes the version bump.
