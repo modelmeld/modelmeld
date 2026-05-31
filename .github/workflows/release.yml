@@ -135,7 +135,23 @@ jobs:
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4.1.8
         with:
           name: sbom
-          path: dist/
+          # Download SBOM to a separate dir, NOT dist/. The PyPI publish
+          # action (gh-action-pypi-publish) rejects any non-distribution
+          # file in packages-dir — caused v0.3.0 to fail with
+          # "Unknown distribution format" on the SBOM JSON.
+          path: release-extras/
+
+      - name: Publish to PyPI (Trusted Publishing)
+        # Publish BEFORE Sigstore signing — the sigstore-python action
+        # writes .sigstore.json files next to its inputs (into dist/),
+        # which then break gh-action-pypi-publish's expectation that
+        # dist/ contains only wheels + sdists. Caused v0.3.0 to fail.
+        uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70  # v1.12.3
+        with:
+          # No api-token needed — uses OIDC token issued by GitHub to
+          # the PyPI Trusted Publisher configured for this project.
+          packages-dir: dist/
+          skip-existing: true
 
       - name: Sign artifacts with Sigstore
         uses: sigstore/gh-action-sigstore-python@f7ad0af51a5648d09a20d00370f0a91c3bdf8f84  # v3.0.0
@@ -143,16 +159,6 @@ jobs:
           inputs: |
             ./dist/*.whl
             ./dist/*.tar.gz
-
-      - name: Publish to PyPI (Trusted Publishing)
-        uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70  # v1.12.3
-        with:
-          # No api-token needed — uses OIDC token issued by GitHub to
-          # the PyPI Trusted Publisher configured for this project.
-          # Exclude SBOM + signatures from the PyPI upload (they're for
-          # the GitHub Release only); the wheel + sdist go to PyPI.
-          packages-dir: dist/
-          skip-existing: true
 
       - name: Create GitHub Release with signed artifacts + SBOM
         uses: softprops/action-gh-release@01570a1f39cb168c169c802c3bceb9e93fb10974  # v2.1.0
@@ -164,5 +170,5 @@ jobs:
             dist/*.tar.gz
             dist/*.sigstore
             dist/*.sigstore.json
-            dist/modelmeld-${{ needs.build.outputs.version }}-sbom.json
+            release-extras/modelmeld-${{ needs.build.outputs.version }}-sbom.json
           fail_on_unmatched_files: false   # signatures land in dist/ via Sigstore action
