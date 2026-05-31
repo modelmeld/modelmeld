@@ -15,6 +15,10 @@ name: Release PR
 on:
   push:
     branches: [main]
+  # Manual re-run for recovery. Useful when release-please's PR was
+  # accidentally closed (2026-05-30 incident on 0.3.1) or when main was
+  # updated without a commit that triggers release-please (rare).
+  workflow_dispatch:
 
 permissions:
   contents: write
