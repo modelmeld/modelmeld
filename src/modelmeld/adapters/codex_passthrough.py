@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -316,6 +317,7 @@ class CodexPassthroughAdapter(ProviderAdapter):
                 if delta_text:
                     yield ChatCompletionChunk(
                         id=chunk_id,
+                        created=int(time.time()),
                         model=request.model,
                         choices=[
                             ChunkChoice(
@@ -330,6 +332,7 @@ class CodexPassthroughAdapter(ProviderAdapter):
                 chunk_id = getattr(response, "id", "") if response else chunk_id
                 yield ChatCompletionChunk(
                     id=chunk_id,
+                    created=int(time.time()),
                     model=request.model,
                     choices=[
                         ChunkChoice(
