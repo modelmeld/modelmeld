@@ -14,6 +14,14 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.3.1](https://github.com/modelmeld/modelmeld/compare/v0.3.0...v0.3.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **release:** pass tag_name explicitly to gh-release action ([cf9596c](https://github.com/modelmeld/modelmeld/commit/cf9596c887fd6b34b6608561d7ac37c27e17a8ba))
+* **release:** publish to PyPI before Sigstore signing; isolate SBOM path ([fb3f4c3](https://github.com/modelmeld/modelmeld/commit/fb3f4c37c59a49e4a767a3d130eb42c3896b6ed5))
+
 ## [0.3.0](https://github.com/modelmeld/modelmeld/compare/v0.2.0...v0.3.0) (2026-05-31)
 
 
