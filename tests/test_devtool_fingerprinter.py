@@ -76,6 +76,43 @@ def test_detects_github_copilot(fingerprinter: Fingerprinter) -> None:
     assert fp.tool == DevTool.GITHUB_COPILOT
 
 
+def test_detects_opencode_self_identity(fingerprinter: Fingerprinter) -> None:
+    fp = fingerprinter.identify(
+        _req(
+            system="I'm opencode, and AI coding assistant. Help with the code.",
+            user="refactor utils.py",
+        )
+    )
+    assert fp.tool == DevTool.OPENCODE
+
+
+def test_detects_opencode_you_are_form(fingerprinter: Fingerprinter) -> None:
+    fp = fingerprinter.identify(
+        _req(system="You are opencode, an open-source AI coding agent.", user="hi")
+    )
+    assert fp.tool == DevTool.OPENCODE
+
+
+def test_opencode_anthropic_spoof_fingerprints_as_claude_code(
+    fingerprinter: Fingerprinter,
+) -> None:
+    """opencode actively spoofs Claude Code's identity when routing to
+    Anthropic providers. That spoof is intentional on opencode's side, so
+    opencode-via-Anthropic traffic is indistinguishable from real Claude Code
+    at the wire level — our fingerprinter correctly identifies it as
+    CLAUDE_CODE because that's what the wire actually says.
+    This test documents the limitation so future contributors don't try to
+    "fix" the fingerprinter by guessing.
+    """
+    fp = fingerprinter.identify(
+        _req(
+            system="You are Claude Code, Anthropic's official CLI for Claude.",
+            user="refactor utils.py",
+        )
+    )
+    assert fp.tool == DevTool.CLAUDE_CODE
+
+
 def test_more_hits_means_higher_confidence(fingerprinter: Fingerprinter) -> None:
     one_hit = fingerprinter.identify(
         _req(system="You are Claude Code.", user="hi")

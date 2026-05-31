@@ -41,6 +41,7 @@ class DevTool(str, Enum):
     CLAUDE_CODE = "claude_code"
     AIDER = "aider"
     CLINE = "cline"
+    OPENCODE = "opencode"
     GITHUB_COPILOT = "github_copilot"
     OPENAI_SDK = "openai_sdk"
     ANTHROPIC_SDK = "anthropic_sdk"
@@ -108,6 +109,20 @@ _DEFAULT_PATTERNS: dict[DevTool, list[re.Pattern[str]]] = {
         re.compile(r"\bI am Cline\b", re.IGNORECASE),
         re.compile(r"<read_file>|<execute_command>|<write_to_file>", re.IGNORECASE),
         re.compile(r"You are Cline\b", re.IGNORECASE),
+    ],
+    # opencode (github.com/sst/opencode) — SST's terminal coding agent.
+    # Known limitation: opencode actively spoofs the upstream provider's
+    # official-CLI prompt when routing to that provider's API. For Anthropic
+    # routing, opencode injects "You are Claude Code, Anthropic's official
+    # CLI for Claude" verbatim. That means opencode → Anthropic traffic
+    # will fingerprint as CLAUDE_CODE here (the spoof is intentional on
+    # opencode's side, so opencode requests look indistinguishable from
+    # real Claude Code at the wire level). opencode → OpenAI/Gemini traffic
+    # preserves opencode's own identity strings, which these patterns catch.
+    DevTool.OPENCODE: [
+        re.compile(r"\bI'?m opencode\b", re.IGNORECASE),
+        re.compile(r"\bYou are opencode\b", re.IGNORECASE),
+        re.compile(r"\bopencode\b[^.\n]{0,40}\bAI coding (?:assistant|agent)\b", re.IGNORECASE),
     ],
     DevTool.GITHUB_COPILOT: [
         re.compile(r"You are GitHub Copilot", re.IGNORECASE),

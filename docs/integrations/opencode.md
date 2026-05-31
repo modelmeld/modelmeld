@@ -124,12 +124,16 @@ opencode's `/models` picker, the scout substituted — that's by design.
 The audit headers show the actual model and its task score so the
 substitution is observable, not silent.
 
-> **Note:** the `x-modelmeld-devtool` header (which fingerprints the
-> originating client from the request shape) doesn't yet include an
-> opencode signature. Traffic from opencode will route correctly and
-> get the rest of the audit headers, but won't be identified as
-> `opencode` in the fingerprint until a signature is added —
-> tracked as a follow-up.
+> **Note on `x-modelmeld-devtool`:** the gateway fingerprints opencode
+> from its self-identifying system prompt (`I'm opencode, and AI coding
+> assistant` / `You are opencode...`) and emits
+> `x-modelmeld-devtool: opencode:N.NN`. **Caveat:** opencode actively
+> spoofs the upstream provider's official-CLI prompt when routing to
+> that provider's API. For requests targeting an Anthropic model
+> (Claude family), opencode injects Claude Code's identity verbatim, so
+> those requests will fingerprint as `claude_code` here — that's the
+> spoof working as designed, not a gateway bug. Requests to OpenAI /
+> Gemini models retain opencode's identity and fingerprint correctly.
 
 ## Common gotchas
 
