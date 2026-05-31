@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.6.1](https://github.com/modelmeld/modelmeld/compare/v0.6.0...v0.6.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **api:** /v1/models auto-derives lineup from the model registry ([0296eb1](https://github.com/modelmeld/modelmeld/commit/0296eb1c9f45d2ee86146e25e46b5621b5fd61ed))
+
 ## [0.6.0](https://github.com/modelmeld/modelmeld/compare/v0.5.0...v0.6.0) (2026-05-31)
 
 
