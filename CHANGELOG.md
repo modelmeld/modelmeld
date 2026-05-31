@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.6.2](https://github.com/modelmeld/modelmeld/compare/v0.6.1...v0.6.2) (2026-05-31)
+
+
+### Bug Fixes
+
+* **api:** audit header emits canonical model_id from the registry ([c9837f6](https://github.com/modelmeld/modelmeld/commit/c9837f62af5be740f628b1faaf3193c877293020))
+
 ## [0.6.1](https://github.com/modelmeld/modelmeld/compare/v0.6.0...v0.6.1) (2026-05-31)
 
 
