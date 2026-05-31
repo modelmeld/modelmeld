@@ -85,6 +85,16 @@ class RequestCompletedEvent:
     # Drives per-dev-tool cache-hit analytics in FinOps rollups.
     cache_status: str | None = None
 
+    # Capability routing context (Sprint 1B follow-up). `quality_threshold` is
+    # the score cutoff applied at pick time — useful for diagnosing why a
+    # particular request landed on an unexpectedly cheap/expensive model.
+    # `requires_tool_use` is True when the inbound request carried a non-empty
+    # `tools` array; useful for diagnosing tool-requiring requests routed to
+    # models that lack tool support. Both default to safe sentinel values so
+    # existing event constructors stay compatible.
+    quality_threshold: float | None = None
+    requires_tool_use: bool = False
+
 
 OnRequestComplete = Callable[[RequestCompletedEvent], Awaitable[None]]
 

@@ -829,12 +829,14 @@ def _build_event(
     # Capability routing fields (FinOps consumes these for savings math).
     model_served = request.model
     task_category = None
+    quality_threshold: float | None = None
     if decision is not None:
         if decision.model_id_override:
             model_served = decision.model_id_override
         cap = getattr(decision, "capability_decision", None)
         if cap is not None:
             task_category = getattr(cap, "task_category", None)
+            quality_threshold = getattr(cap, "quality_threshold", None)
 
     return RequestCompletedEvent(
         request_id=request_id,
@@ -859,6 +861,8 @@ def _build_event(
         user_id=(identity or {}).get("user_id"),
         api_key_id=(identity or {}).get("api_key_id"),
         cache_status=cache_status,
+        quality_threshold=quality_threshold,
+        requires_tool_use=bool(getattr(request, "tools", None)),
     )
 
 
