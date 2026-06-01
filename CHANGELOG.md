@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.7.0](https://github.com/modelmeld/modelmeld/compare/v0.6.3...v0.7.0) (2026-06-01)
+
+
+### Features
+
+* **api:** /version endpoint for deploy verification ([d55869e](https://github.com/modelmeld/modelmeld/commit/d55869ec650a2bff689259b6c954f9baec871d94))
+
 ## [0.6.3](https://github.com/modelmeld/modelmeld/compare/v0.6.2...v0.6.3) (2026-06-01)
 
 
