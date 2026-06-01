@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.6.3](https://github.com/modelmeld/modelmeld/compare/v0.6.2...v0.6.3) (2026-06-01)
+
+
+### Bug Fixes
+
+* **build:** pin hatchling &lt;1.28 for PyPI publish-action compatibility ([a86abc9](https://github.com/modelmeld/modelmeld/commit/a86abc9d47135a3793bda41a576bd3b616f0141f))
+
 ## [0.6.2](https://github.com/modelmeld/modelmeld/compare/v0.6.1...v0.6.2) (2026-05-31)
 
 
