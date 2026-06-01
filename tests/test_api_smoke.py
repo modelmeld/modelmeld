@@ -15,6 +15,40 @@ def test_healthz_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_version_returns_expected_shape() -> None:
+    response = make_client().get("/version")
+    assert response.status_code == 200
+    body = response.json()
+    # modelmeld is the package under test — always installed in the
+    # test environment via `pip install -e .`, so the version string
+    # must be present and non-empty.
+    assert isinstance(body.get("modelmeld"), str) and body["modelmeld"]
+    # The other three fields are presence-required (key exists), but
+    # value-flexible: enterprise package may be absent (None), commit
+    # SHA may be absent (None), registry size is always an int.
+    assert "modelmeld_enterprise" in body
+    assert "deployed_commit" in body
+    assert isinstance(body.get("registry_size"), int)
+    assert body["registry_size"] >= 0
+
+
+def test_version_reads_commit_from_env(monkeypatch: object) -> None:
+    # MODELMELD_DEPLOYED_COMMIT wins over RENDER_GIT_COMMIT when both
+    # are set — explicit operator override beats the PaaS auto-inject.
+    import os
+    monkeypatch.setenv("MODELMELD_DEPLOYED_COMMIT", "deadbeef")  # type: ignore[attr-defined]
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "cafebabe")  # type: ignore[attr-defined]
+    response = make_client().get("/version")
+    assert response.json()["deployed_commit"] == "deadbeef"
+    monkeypatch.delenv("MODELMELD_DEPLOYED_COMMIT")  # type: ignore[attr-defined]
+    # With MODELMELD_DEPLOYED_COMMIT gone, RENDER_GIT_COMMIT becomes
+    # the source.
+    response = make_client().get("/version")
+    assert response.json()["deployed_commit"] == "cafebabe"
+    # Cleanup handled by monkeypatch teardown.
+    _ = os  # silence unused-import warning if linter is strict
+
+
 def test_models_returns_openai_list_shape() -> None:
     response = make_client().get("/v1/models")
     assert response.status_code == 200

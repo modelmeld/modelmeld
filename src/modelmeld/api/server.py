@@ -111,9 +111,10 @@ def build_app(
         )
 
     from modelmeld.api.body_size_limit import BodySizeLimitMiddleware
-    from modelmeld.api.routes import chat, healthz, messages, models
+    from modelmeld.api.routes import chat, healthz, messages, models, version
 
     app.include_router(healthz.router)
+    app.include_router(version.router)
     app.include_router(models.router, prefix="/v1")
     app.include_router(chat.router, prefix="/v1")
     app.include_router(messages.router, prefix="/v1")
