@@ -1,5 +1,11 @@
 [build-system]
-requires = ["hatchling>=1.20"]
+# hatchling pinned to <1.28 — newer hatchling emits Metadata-Version 2.5
+# in built wheels, which the bundled twine inside our pinned
+# gh-action-pypi-publish (v1.12.3) only validates up to Metadata-Version
+# 2.4. The 0.6.2 release failed at the PyPI publish step for exactly
+# this reason. Pin lets the build emit a Metadata-Version twine still
+# accepts. Bump the ceiling when we move to a newer publish action.
+requires = ["hatchling>=1.20,<1.28"]
 build-backend = "hatchling.build"
 
 [project]
