@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.7.1](https://github.com/modelmeld/modelmeld/compare/v0.7.0...v0.7.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **api:** surface Anthropic cache stats in /v1/messages responses ([02fa31b](https://github.com/modelmeld/modelmeld/commit/02fa31b45352aa8c7a08661974e667ab6306eb52))
+
 ## [0.7.0](https://github.com/modelmeld/modelmeld/compare/v0.6.3...v0.7.0) (2026-06-01)
 
 
