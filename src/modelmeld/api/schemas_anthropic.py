@@ -216,6 +216,28 @@ class AnthropicMessagesRequest(BaseModel):
     metadata: AnthropicMetadata | None = None
 
 
+class AnthropicCountTokensRequest(AnthropicMessagesRequest):
+    """`POST /v1/messages/count_tokens` request body.
+
+    Same shape as `AnthropicMessagesRequest` except `max_tokens` is
+    optional — `count_tokens` measures the input prompt; it does not
+    generate any output, so `max_tokens` has no semantic role on this
+    endpoint. Anthropic's API accepts count_tokens requests without
+    `max_tokens`; we follow suit.
+
+    Inherits all other fields (`temperature`, `top_p`, etc.) so
+    `from_anthropic_request` can translate either shape uniformly —
+    the generation-only fields are simply ignored by the
+    token-counting path.
+    """
+    # Override the required-int constraint to optional. Pyright/mypy
+    # would flag this as a Liskov-style override (subclass loosening a
+    # parent constraint), but Pydantic supports it and the semantics
+    # are intentional here. The `type: ignore` is on the field
+    # redefinition.
+    max_tokens: int | None = Field(default=None, ge=1)  # type: ignore[assignment]
+
+
 # ---------------------------------------------------------------------------
 # Response (non-streaming)
 # ---------------------------------------------------------------------------

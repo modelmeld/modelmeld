@@ -138,10 +138,12 @@ async def test_capability_routing_overrides_request_model() -> None:
 
 
 # ---------------------------------------------------------------------------
-# When threshold is too high → 503 from chat route (RouterError mapping)
+# When threshold is too high → 400 from chat route (client-side problem;
+# was 503 pre-fix but the customer is the one with a request we can't
+# fulfill, so 400 is more accurate). Error body must NOT name providers.
 # ---------------------------------------------------------------------------
 
-async def test_no_eligible_model_returns_503() -> None:
+async def test_no_eligible_model_returns_400_with_friendly_detail() -> None:
     adapter = _FakeAdapter("openai")
     app = _build_app_with_capability_router(
         registry_entries=[_entry("weak", "openai", 0.5, 1.0, coding=0.50)],
@@ -152,8 +154,18 @@ async def test_no_eligible_model_returns_503() -> None:
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
         resp = await client.post("/v1/chat/completions", json=_payload("refactor"))
-    assert resp.status_code == 503
-    assert "capability_scout" in resp.json()["detail"]
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["detail"]["error"] == "no_eligible_model"
+    # The friendly detail must point at user-actionable knobs:
+    detail_text = body["detail"]["detail"]
+    assert "quality-threshold" in detail_text  # header name, hyphenated
+    assert "byok" in detail_text.lower()
+    # The bare adapter name (e.g. "openai" registered in our test
+    # fixture) must not echo into the customer-facing body — error
+    # responses should surface user-actionable knobs, not internal
+    # routing-table state.
+    assert "openai" not in detail_text
     assert adapter.received_models == []
 
 

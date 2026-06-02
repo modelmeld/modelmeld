@@ -49,7 +49,9 @@ from modelmeld.api.routes.chat import (
     _fire_success,
     _fire_success_stream,
     _is_byok_required_error,
+    _is_no_eligible_model_error,
     _maybe_scrub,
+    _no_eligible_model_detail,
     _routing_headers,
     _write_memory_turns,
     _write_memory_turns_streaming,
@@ -60,6 +62,7 @@ from modelmeld.api.routing_hints import (
 )
 from modelmeld.api.schemas import ChatCompletion, ChatCompletionRequest, TextPart
 from modelmeld.api.schemas_anthropic import (
+    AnthropicCountTokensRequest,
     AnthropicMessagesRequest,
     AnthropicMessagesResponse,
 )
@@ -377,6 +380,11 @@ async def anthropic_messages(
                 status_code=400,
                 detail=_byok_required_detail(e),
             ) from e
+        if _is_no_eligible_model_error(e):
+            raise HTTPException(
+                status_code=400,
+                detail=_no_eligible_model_detail(e),
+            ) from e
         raise HTTPException(status_code=503, detail=safe_error_detail(e)) from e
 
     # Per-tenant cache TTL override.
@@ -598,10 +606,15 @@ async def anthropic_messages(
 
 @router.post("/messages/count_tokens")
 async def anthropic_count_tokens(
-    body: AnthropicMessagesRequest,
+    body: AnthropicCountTokensRequest,
     fastapi_request: Request,
 ) -> JSONResponse:
-    """Estimate input tokens for an Anthropic-format request."""
+    """Estimate input tokens for an Anthropic-format request.
+
+    `max_tokens` is intentionally NOT a required field on this endpoint
+    (only on `/v1/messages`) — see `AnthropicCountTokensRequest`
+    docstring for the rationale.
+    """
     token_counter: TokenCounter | None = getattr(
         fastapi_request.app.state, "token_counter", None,
     )

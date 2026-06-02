@@ -154,9 +154,11 @@ async def test_agent_role_header_maps_to_category() -> None:
         quality_threshold=0.80,
     )
 
-    # Without role: "hello" → no signals → simple_qa → no model meets 0.80 → 503
+    # Without role: "hello" → no signals → simple_qa → no model meets 0.80 → 400
+    # (Was 503; client problem — their threshold is unmet — so 400 is accurate.)
     resp = await _post(app, _payload("hello"))
-    assert resp.status_code == 503
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "no_eligible_model"
 
     # With agent_role=coder: → coding → gpt-mini (0.85) meets threshold → 200
     resp = await _post(app, _payload("hello"), headers={HEADER_AGENT_ROLE: "coder"})
@@ -289,8 +291,12 @@ async def test_exclude_providers_header_filters_candidate_set() -> None:
     assert resp.headers["x-modelmeld-routed-model"] == "gpt-mini"
 
 
-async def test_excluding_all_eligible_providers_returns_503() -> None:
-    """Excluding every eligible provider should fail closed."""
+async def test_excluding_all_eligible_providers_returns_400() -> None:
+    """Excluding every eligible provider should fail closed.
+
+    Was 503 pre-fix; reclassified to 400 since the caller's own
+    exclusion list is what made the request unfulfillable.
+    """
     openai = _FakeAdapter("openai")
     app = _build_test_app(
         entries=[_entry("gpt-mini", "openai", 1.0, 3.0, coding=0.83)],
@@ -301,7 +307,8 @@ async def test_excluding_all_eligible_providers_returns_503() -> None:
         app, _payload("refactor"),
         headers={HEADER_EXCLUDE_PROVIDERS: "openai,anthropic,vllm"},
     )
-    assert resp.status_code == 503
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "no_eligible_model"
 
 
 # ---------------------------------------------------------------------------

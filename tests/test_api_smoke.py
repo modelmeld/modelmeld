@@ -15,6 +15,66 @@ def test_healthz_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_count_tokens_accepts_request_without_max_tokens() -> None:
+    # /v1/messages/count_tokens has no semantic role for max_tokens
+    # (it doesn't generate output), so it must accept requests that
+    # omit the field — Anthropic's API does, and Claude Code's
+    # pre-flight estimator sends count_tokens without max_tokens.
+    body = {
+        "model": "claude-sonnet-4-6",
+        "messages": [{"role": "user", "content": "hello world"}],
+    }
+    response = make_client().post(
+        "/v1/messages/count_tokens",
+        json=body,
+        headers={"anthropic-version": "2023-06-01"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "input_tokens" in data
+    assert isinstance(data["input_tokens"], int)
+    assert data["input_tokens"] > 0
+
+
+def test_count_tokens_also_accepts_max_tokens_when_present() -> None:
+    # Backward-compat: if a caller passes max_tokens anyway it must
+    # not break the endpoint.
+    body = {
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 100,
+        "messages": [{"role": "user", "content": "hello world"}],
+    }
+    response = make_client().post(
+        "/v1/messages/count_tokens",
+        json=body,
+        headers={"anthropic-version": "2023-06-01"},
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_no_eligible_model_error_omits_provider_names() -> None:
+    # The capability-scout error surfaces in customer-facing responses.
+    # The message text must not echo the eligible-provider list — that
+    # information isn't actionable for the caller (they want to know
+    # what knob to adjust, not which adapters were considered). The
+    # structured field stays populated for operator introspection.
+    from modelmeld.scout.capability import NoEligibleModelError
+    err = NoEligibleModelError(
+        task_category="reasoning",
+        quality_threshold=0.99,
+        eligible_providers=frozenset({"some-provider", "another-provider"}),
+    )
+    msg = str(err)
+    assert "0.99" in msg
+    assert "reasoning" in msg
+    # Provider names must not appear in the message body.
+    assert "some-provider" not in msg
+    assert "another-provider" not in msg
+    assert "providers=" not in msg
+    # Structured field is still populated for operator use.
+    assert err.eligible_providers == frozenset({"some-provider", "another-provider"})
+
+
 def test_version_returns_expected_shape() -> None:
     response = make_client().get("/version")
     assert response.status_code == 200

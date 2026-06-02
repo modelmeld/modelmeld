@@ -89,7 +89,18 @@ if TYPE_CHECKING:
 
 
 class NoEligibleModelError(RuntimeError):
-    """Raised when no model in the registry meets the quality bar for the task."""
+    """Raised when no model in the registry meets the quality bar for the task.
+
+    The structured fields (`task_category`, `quality_threshold`,
+    `eligible_providers`) are preserved on the exception for operator
+    introspection; the human-readable message text deliberately omits
+    the `eligible_providers` list. The message bubbles into customer-
+    facing error responses, where the provider list is an internal
+    routing-table detail that isn't actionable for the caller — they
+    need to know what to adjust (threshold, BYOK header, alias), not
+    which adapters were considered. Operators who need the provider
+    list can read `exc.eligible_providers` directly off the exception.
+    """
 
     def __init__(
         self,
@@ -100,13 +111,9 @@ class NoEligibleModelError(RuntimeError):
         self.task_category = task_category
         self.quality_threshold = quality_threshold
         self.eligible_providers = eligible_providers
-        providers = (
-            f"; providers={sorted(eligible_providers)}"
-            if eligible_providers is not None else ""
-        )
         super().__init__(
             f"No model in registry meets threshold {quality_threshold} "
-            f"for task '{task_category}'{providers}"
+            f"for task '{task_category}'"
         )
 
 

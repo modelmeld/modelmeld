@@ -165,6 +165,11 @@ async def chat_completions(
                 status_code=400,
                 detail=_byok_required_detail(e),
             ) from e
+        if _is_no_eligible_model_error(e):
+            raise HTTPException(
+                status_code=400,
+                detail=_no_eligible_model_detail(e),
+            ) from e
         raise HTTPException(status_code=503, detail=safe_error_detail(e)) from e
 
     # Resolve per-tenant cache TTL override once we know the
@@ -345,6 +350,41 @@ def _byok_required_detail(error: Exception) -> dict[str, str]:
             f"ANTHROPIC_CUSTOM_HEADERS='x-modelmeld-byok-{primary}: sk-...'."
         ),
         "provider_missing": primary,
+    }
+
+
+def _is_no_eligible_model_error(error: Exception) -> bool:
+    """Return True iff the RouterError wraps a `NoEligibleModelError` —
+    no model in the registry meets the caller's quality threshold for
+    the caller's task category. This is a client-side problem (the
+    threshold is too high, or BYOK is needed), so a 400 is more
+    accurate than the generic 503 the bare RouterError yields.
+    """
+    msg = str(error)
+    return "capability_scout:" in msg and "meets threshold" in msg
+
+
+def _no_eligible_model_detail(_error: Exception) -> dict[str, str]:
+    """Build the 400-response body for the no-eligible-model case.
+
+    Surfaces user-actionable knobs only: lower the threshold, add a
+    BYOK key, or switch to a less strict alias. The underlying error
+    string in `NoEligibleModelError` already omits the eligible-
+    provider list (that information isn't actionable for the
+    caller); this helper just attaches the three suggested
+    remediation paths.
+    """
+    return {
+        "error": "no_eligible_model",
+        "detail": (
+            "No model in the registry meets the requested quality "
+            "threshold for this task. Options: (1) lower the "
+            "`x-modelmeld-quality-threshold` header (default 0.55); "
+            "(2) add a BYOK key for a frontier vendor "
+            "(e.g. `x-modelmeld-byok-anthropic: <your-key>`); "
+            "(3) switch to a less strict alias such as "
+            "`anthropic/modelmeld-saver` or `anthropic/modelmeld-auto`."
+        ),
     }
 
 
