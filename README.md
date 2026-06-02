@@ -1,36 +1,13 @@
 # ModelMeld
 
-> AI gateway with capability-based routing across providers and per-request
-> bring-your-own-key passthrough. Speaks OpenAI Chat Completions AND
-> Anthropic Messages natively. Drop-in for Claude Code, Cursor, Aider,
-> Cline, Continue.
+> Per-request capability routing for Claude Code, Cursor, Aider, Cline,
+> Continue. Speaks OpenAI and Anthropic natively. Bring your own key —
+> never stored.
 
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
 [![PyPI](https://img.shields.io/pypi/v/modelmeld)](https://pypi.org/project/modelmeld/)
-
-## What problem this solves
-
-You're paying frontier-model prices on every request — including the ones
-where a coding-tuned 7B model would produce identical output. Most gateways
-force a global choice ("use Anthropic" / "use OpenAI" / "use local").
-ModelMeld picks per request, with three policies you control:
-
-- **`anthropic/modelmeld-saver`** — OSS-only. Never escalates to
-  frontier. Predictable cost ceiling — you pay OSS-tier rates
-  regardless of request complexity.
-- **`anthropic/modelmeld-auto`** — OSS by default; escalates to frontier
-  (Sonnet/Opus) when the user's prompt contains 2+ reasoning markers
-  ("think step by step", "explain your reasoning", etc.). Mirrors
-  LiteLLM's Complexity Router trigger.
-- **`anthropic/modelmeld-quality`** — Frontier-first. Downgrades to OSS
-  only on detected trivial work (autocomplete-shape, background calls).
-
-**Frontier-tier routing uses BYOK** — your Anthropic/OpenAI key is sent
-as a per-request header (`x-modelmeld-byok-anthropic: sk-ant-…`), used
-to make the upstream call, then forgotten. Never stored at rest, never
-logged. Same pattern as competitor gateways but without their
-per-request BYOK markup or the key-custody burden.
+[![CI](https://github.com/modelmeld/modelmeld/actions/workflows/ci.yml/badge.svg)](https://github.com/modelmeld/modelmeld/actions/workflows/ci.yml)
 
 ## Quickstart
 
@@ -39,10 +16,11 @@ pip install modelmeld
 modelmeld setup --tool claude-code
 ```
 
-The setup CLI prompts for your ModelMeld API key (and optionally your
-Anthropic key for BYOK), writes a sourceable shell script, pre-configures
-Claude Code's `/model` picker with the three aliases above, and
-smoke-tests the whole routing pipeline before declaring success.
+The setup CLI prompts for your ModelMeld API key (and optionally an
+Anthropic key for BYOK frontier routing), writes a sourceable shell
+script, pre-configures Claude Code's `/model` picker with the three
+ModelMeld policies, and smoke-tests the routing pipeline before
+declaring success.
 
 Then in your shell:
 
@@ -51,14 +29,131 @@ source ~/.modelmeld/setup-claude-code.sh
 claude
 ```
 
-In the Claude Code TUI, type `/model` → pick `ModelMeld — Saver` (or
-`Auto` / `Quality`). That's it.
+In the Claude Code TUI, type `/model` → pick `ModelMeld — Auto` (or
+`Saver` / `Quality`). That's it. Self-hosting? See [Self-host](#self-host) below.
+
+## Anthropic prompt caching, end-to-end
+
+Anthropic prompt caching survives end-to-end through ModelMeld:
+
+![cache_control round-trip — first call writes 4933 tokens to cache; second call reads them back at 90% discount](docs/img/cache-control-proof.png)
+
+Same payload sent twice, seconds apart. The second call hits Anthropic's
+prompt cache for **4933 tokens at 10% of normal rate** — a 90% input-token
+discount, preserved through the gateway. Many other gateways strip
+`cache_control` markers; ModelMeld passes them through verbatim.
+
+## Why ModelMeld
+
+You're paying frontier-model prices on every request — including the
+ones where a coding-tuned 7B model would produce identical output. Most
+gateways force a global choice ("use Anthropic" / "use OpenAI" / "use
+local"). ModelMeld picks per request, driven by a benchmark-weighted
+capability scout that knows which model class is sufficient for which
+task category.
+
+## How it compares
+
+| Capability | ModelMeld | Typical gateway |
+|---|---|---|
+| Anthropic `cache_control` preserved end-to-end | ✅ | ⚠️ Many strip it |
+| Speaks `/v1/chat/completions` AND `/v1/messages` natively | ✅ | Usually OpenAI shape only |
+| Audit headers expose the routing decision to the caller | ✅ (`x-modelmeld-routed-to`, `x-modelmeld-routed-model`, etc.) | Usually opaque |
+| BYOK — keys never stored at rest | ✅ | Varies |
+| Honest non-coverage list (what doesn't work yet) | ✅ | Rare |
+
+The differentiator isn't that we route. It's that **we don't break the
+features upstream providers built into their APIs**, and we tell you
+exactly what the gateway did with your request.
+
+## Three policies, three behaviors
+
+Pick the policy that matches your work mode. They show up in any tool's
+`/model` picker as three options:
+
+- **`anthropic/modelmeld-saver`** — OSS-only. Never escalates to
+  frontier. Predictable cost ceiling — you pay OSS-tier rates
+  regardless of request complexity.
+- **`anthropic/modelmeld-auto`** — OSS by default; escalates to
+  frontier (Sonnet/Opus) when the prompt contains 2+ reasoning markers
+  ("think step by step", "explain your reasoning", etc.).
+- **`anthropic/modelmeld-quality`** — Frontier-first. Downgrades to OSS
+  only on detected trivial work (autocomplete-shape, background calls).
+
+**Frontier-tier routing uses BYOK.** Your Anthropic / OpenAI key is sent
+as a per-request header (`x-modelmeld-byok-anthropic: sk-ant-…`), used
+to make the upstream call, then forgotten. Never stored at rest, never
+logged.
+
+## Works with
+
+Drop-in for any tool that speaks OpenAI Chat Completions or Anthropic
+Messages.
+
+**Validated end-to-end:**
+[Claude Code](docs/integrations/claude-code.md) ·
+[opencode](docs/integrations/opencode.md) ·
+[Aider](docs/integrations/aider.md) ·
+[AutoGen](docs/integrations/autogen.md) ·
+[CrewAI](docs/integrations/crewai.md) ·
+[LangGraph](docs/integrations/langgraph.md) ·
+[OpenClaw](docs/integrations/openclaw.md) ·
+OpenAI SDK · `anthropic-sdk-python` · `@anthropic-ai/sdk`
+
+**Should work, not yet live-tested:**
+[Cursor](docs/integrations/cursor.md) ·
+[Cline](docs/integrations/cline.md) ·
+[Continue](docs/integrations/continue.md) ·
+Codex CLI
+
+Frameworks can declare task category + agent role explicitly via
+`x-modelmeld-task-category` / `x-modelmeld-agent-role` headers — bypasses
+the classifier when your harness already knows what kind of work the
+request represents. See [routing hints](docs/routing-hints.md).
+
+## What doesn't work yet
+
+Honest non-coverage list for the v1 OSS API surface:
+
+- **OpenAI Responses API** (`/v1/responses`) — on the roadmap, not v1.
+  Current Codex CLI still uses `/v1/chat/completions` and works
+  through ModelMeld today; the newer Responses surface is the path
+  for clients adopting OpenAI's stateful agent loop.
+- **Anthropic image content blocks** (vision input) — deferred. Claude
+  Code doesn't use vision; documented as a known gap rather than
+  silently failing.
+- **Streaming `cache_control` stats** — non-streaming responses surface
+  `cache_creation_input_tokens` / `cache_read_input_tokens` correctly
+  (see the screenshot above). The streaming-translation pipeline
+  doesn't yet propagate the upstream `message_start` event's cache
+  counts; tracked.
+
+## What's in the package
+
+- **Two API surfaces, one routing pipeline.** OpenAI-compatible at
+  `/v1/chat/completions` (drop-in for any OpenAI-wire-format client).
+  Anthropic-compatible at `/v1/messages` (drop-in for Claude Code,
+  `anthropic-sdk-python`, `@anthropic-ai/sdk`). Both surfaces stream
+  via SSE, share the same router / memory / cache pipeline, and emit
+  identical `x-modelmeld-*` audit headers.
+- **Provider adapters** — OpenAI, Anthropic (with full schema
+  translation in both directions), vLLM, TensorRT-LLM. Each adapter
+  retries transient errors (429 / 5xx / network blip) with exponential
+  backoff.
+- **Capability-based routing** — `CapabilityScout` picks the cheapest
+  model meeting a quality threshold for the prompt's task category,
+  driven by the `ModelRegistry`.
+- **Completion cache** — exact-match (in-memory or Redis) + semantic
+  (Qdrant); cache key pools across users routed to the same served model.
+- **PII scrubbing** — runs on every egress path before cloud upload.
+- **Production-tuned defaults** — full dev-tool detection catalog and a
+  current `default_registry.json` snapshot ship as the defaults. All
+  tunable via constructor args.
 
 ## Self-host
 
 `modelmeld setup` configures your tool against the hosted gateway at
-`api.modelmeld.ai`. If you'd rather run the gateway
-yourself:
+`api.modelmeld.ai`. To run the gateway yourself instead:
 
 ```bash
 pip install 'modelmeld[anthropic,openai]'
@@ -67,127 +162,56 @@ export OPENAI_API_KEY=sk-…           # your real OpenAI key (optional)
 uvicorn modelmeld.api.server:app --host 0.0.0.0 --port 8080
 ```
 
-Then point your tool at `http://localhost:8080`. The gateway's
-behavior is identical to the hosted endpoint; you just supply the
-upstream keys directly via env vars instead of BYOK headers.
+Then point your tool at `http://localhost:8080`. Behavior is identical
+to the hosted endpoint; you supply upstream keys via env vars instead
+of BYOK headers.
 
 For routing across local vLLM + cloud providers, see
-[`docs/backends.md`](docs/backends.md).
+[`docs/backends.md`](docs/backends.md). For full self-host operational
+notes (TLS, scaling, observability), see [`docs/self-host.md`](docs/self-host.md).
 
-## What's in the package
+## Licensing — TL;DR
 
-- **Two API surfaces, one routing pipeline:**
-  - **OpenAI-compatible** at `/v1/chat/completions` — drop-in for any
-    client that speaks OpenAI's wire format (Cursor, Aider, Continue,
-    Cline, OpenAI SDK, Codex CLI, etc.). Plus `/v1/models` listing.
-  - **Anthropic-compatible** at `/v1/messages` — drop-in for any client
-    that speaks Anthropic's wire format (Claude Code via
-    `ANTHROPIC_BASE_URL`, `anthropic-sdk-python`, `@anthropic-ai/sdk`).
-  - Both surfaces stream via SSE, share the same scout/router/memory/
-    cache pipeline, and emit identical `x-modelmeld-*` response headers.
-- **Provider adapters** — OpenAI, Anthropic (with full schema translation
-  in both directions), vLLM, TensorRT-LLM. Each adapter retries transient
-  errors (429 / 5xx / network blip) with exponential backoff before
-  surfacing to the router.
-- **Capability-based routing** — `CapabilityScout` picks the cheapest
-  model that meets a quality threshold for the prompt's task category,
-  driven by the `ModelRegistry`.
-- **Completion cache** — exact-match (in-memory or Redis) + semantic
-  (Qdrant); cache key pools across users routed to the same served model.
-- **PII scrubbing** — runs on every egress path before cloud upload.
-- **Framework integration headers** — declare task category + agent role
-  from AutoGen / CrewAI / LangGraph / OpenClaw to bypass the classifier.
-- **Production-tuned defaults** — `DEFAULT_HEURISTIC_WEIGHTS`,
-  `DEFAULT_QUALITY_THRESHOLD = 0.70`, full dev-tool detection catalog,
-  and a current `default_registry.json` snapshot ship as the defaults.
-  All tunable via constructor args.
+- **Code: AGPL-3.0-or-later.** Use, modify, redistribute. Calling the
+  gateway over HTTP from unmodified clients (Cursor, Aider, Claude
+  Code, etc.) does NOT make those clients AGPL. Running a modified
+  gateway as a service for third parties does require your
+  modifications to also be AGPL.
+- **Bundled snapshot data** (`scout/data/default_registry.json`):
+  CC-BY-4.0 with attribution. Use the snapshot scores anywhere.
+- **Live curated registry feed** (`feed.modelmeld.ai`): subscription
+  product. Continuously updated, editorially weighted across multiple
+  benchmark sources.
 
-## Licensing — code, data, and the live feed
+If you `pip install modelmeld` and never subscribe, **everything works** —
+you just route on a snapshot of benchmark data taken at OSS release date.
+Over ~6 months that snapshot stales relative to the current best-cost
+frontier; the feed is what keeps routing decisions sharp.
 
-This package is licensed under three different sets of terms.
-
-| Component | License | What you can do |
-|---|---|---|
-| Python code | AGPL-3.0-or-later (LICENSE) | Use, modify, redistribute. If you offer a modified gateway as a network service to third parties, your modifications must also be AGPL. Calling the gateway over HTTP from unmodified clients (Cursor, Aider, Claude Code, etc.) does NOT make those clients AGPL. |
-| Bundled snapshot data (`scout/data/default_registry.json`) | CC-BY-4.0 (with attribution) | Use the snapshot scores in your own routing decisions |
-| Live curated registry feed (`feed.modelmeld.ai`) | Subscription terms | Only with an active ModelMeld subscription |
-
-**Why AGPL and not Apache-2.0?** ModelMeld is network-service software in
-the spirit of Sentry, Grafana Loki, MinIO, and GitLab CE. AGPL preserves
-the OSS adoption flywheel for individual users, dev tools, and self-host
-deployments — everyone running the gateway for themselves, or having their
-tools call it over HTTP, is fully unaffected by the copyleft clause. AGPL
-*does* prevent a competitor from forking modelmeld, layering on
-proprietary tweaks, and offering a competing managed service without
-contributing back. Commercial licensing for cases that need to be
-exempt from AGPL: contact `hello@modelmeld.ai`. The full reasoning is in
-[`docs/license-rationale.md`](https://github.com/modelmeld/modelmeld/blob/main/docs/license-rationale.md).
-
-The **curated registry feed** is the subscription product — it's
-updated continuously, editorially weighted across multiple benchmark
-sources, and represents the actual ongoing work that keeps routing
-decisions sharp as new models ship.
-
-If you `pip install modelmeld` and never subscribe, **everything works**
-— you just route on a snapshot of benchmark data taken at OSS release
-date. Over ~6 months the foundation-model market shifts enough that
-your snapshot stales relative to the current best-cost frontier. See
-[`docs/registry-feed.md`](https://github.com/modelmeld/modelmeld/blob/main/docs/registry-feed.md) and
-[`docs/open-core-boundary.md`](https://github.com/modelmeld/modelmeld/blob/main/docs/open-core-boundary.md) for the
-boundary contract.
-
-## Supported backends + integrations
-
-Two complementary surfaces:
-
-- **[Backends](https://github.com/modelmeld/modelmeld/blob/main/docs/backends.md)** — the inference providers ModelMeld
-  routes *to*: OpenAI, Anthropic, vLLM (self-hosted open-weights),
-  TensorRT-LLM + Triton, with Google Gemini planned. Includes setup
-  snippets per backend and the explicit "not supported" list.
-- **[Integrations](https://github.com/modelmeld/modelmeld/blob/main/docs/integrations/README.md)** — the frameworks
-  and dev tools ModelMeld routes *for*:
-  - **Validated today**: Claude Code (via `/v1/messages`), Aider, OpenAI
-    SDK, anthropic SDK, AutoGen, CrewAI, LangGraph, OpenClaw. Anything
-    built on OpenAI or Anthropic SDKs works as a drop-in.
-  - **Should work, not yet live-tested**: Cursor, Continue, Cline,
-    opencode, Codex CLI. All speak OpenAI's `/v1/chat/completions`
-    which is our native dialect.
-  - **Routing-hint headers** (`x-modelmeld-task-category`,
-    `x-modelmeld-agent-role`, etc.) let frameworks declare task category
-    and agent role explicitly instead of relying on the classifier.
-    (see [Routing-hint headers reference](docs/routing-hints.md)).
-
-## Integration scope — v1 commitments
-
-**Wire formats we speak:** OpenAI Chat Completions API + Anthropic
-Messages API. Streaming (SSE) on both, tool-use on both, multi-turn
-conversations on both. The Anthropic surface translates at the HTTP
-boundary; internally everything runs through the same routing pipeline.
-
-**On the roadmap, not v1:**
-- OpenAI **Responses API** (`/v1/responses`) — for clients that adopt
-  OpenAI's newer surface. Current Codex CLI still uses
-  `/v1/chat/completions` and works today.
-- Anthropic **image content blocks** (vision input). Claude Code
-  doesn't use vision; documented as deferred.
-
-**Already shipped (was on roadmap, now live):**
-- Anthropic **prompt caching** — `cache_control` breakpoints are
-  forwarded verbatim to the upstream Anthropic call via native-shape
-  passthrough on `/v1/messages`. Your prompt cache hits work through
-  the gateway. (Many competitor gateways strip this; we don't.)
+Full rationale, boundary contract, and commercial-licensing options:
+[`docs/license-rationale.md`](docs/license-rationale.md),
+[`docs/open-core-boundary.md`](docs/open-core-boundary.md),
+[`docs/registry-feed.md`](docs/registry-feed.md). Or email
+`hello@modelmeld.ai`.
 
 ## Status
 
-Pre-1.0. The OSS API surface is stable in spirit but not yet under
-SemVer guarantees — see [`docs/api-stability.md`](https://github.com/modelmeld/modelmeld/blob/main/docs/api-stability.md)
-for which symbols carry compatibility commitments.
+Production-ready for the routes documented here. Pre-1.0 on SemVer
+guarantees for the public Python API — see
+[`docs/api-stability.md`](docs/api-stability.md) for which symbols
+carry compatibility commitments and which are subject to change.
+
+The HTTP surfaces (`/v1/chat/completions`, `/v1/messages`, the
+`x-modelmeld-*` audit headers) are stable in spirit; we won't break
+existing integrations without a major-version bump and a deprecation
+window.
 
 ## Contributing
 
-PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the dev workflow,
-code style (`ruff format` + `ruff check` + `pyright`), and DCO commit-signoff requirement.
-Good first issues are labeled accordingly.
+PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the dev
+workflow, code style (`ruff format` + `ruff check` + `pyright`), and
+DCO commit-signoff requirement. Issues labeled `good first issue` are
+intentionally scoped for first-time contributors.
 
 We do **not** accept PRs that modify the bundled snapshot data files
 (`scout/data/`) — those are curated centrally for the live feed. File
@@ -205,10 +229,10 @@ adjustments for the next feed release.
 For production deployments needing API-key auth, RBAC, OIDC SSO,
 Postgres-backed SOC2-grade audit logs, encryption-at-rest, per-tenant
 rate limiting, FinOps dashboards, multi-tenant Qdrant cache, or the
-managed hosted tier — contact us at `hello@modelmeld.ai`.
+managed hosted tier — email `hello@modelmeld.ai`.
 
 ## License
 
-- Code: AGPL-3.0-or-later (see [LICENSE](LICENSE), [NOTICE](NOTICE), [`docs/license-rationale.md`](https://github.com/modelmeld/modelmeld/blob/main/docs/license-rationale.md))
+- Code: AGPL-3.0-or-later (see [LICENSE](LICENSE), [NOTICE](NOTICE), [`docs/license-rationale.md`](docs/license-rationale.md))
 - Data files: CC-BY-4.0 (see [scout/data/LICENSE.md](src/modelmeld/scout/data/LICENSE.md))
-- Live feed: subscription terms (see [NOTICE](NOTICE) and [docs/registry-feed.md](https://github.com/modelmeld/modelmeld/blob/main/docs/registry-feed.md))
+- Live feed: subscription terms (see [NOTICE](NOTICE) and [`docs/registry-feed.md`](docs/registry-feed.md))
