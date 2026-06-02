@@ -183,8 +183,20 @@ class ChoiceLogprobs(BaseModel):
 # ---------------------------------------------------------------------------
 
 class PromptTokensDetails(BaseModel):
+    # `cached_tokens` — the unified cross-vendor "tokens served from
+    # cache" count. Populated from OpenAI's auto-cache field and from
+    # Anthropic's `cache_read_input_tokens` (mirrored here so consumers
+    # have a vendor-independent way to ask "how many tokens hit cache").
     cached_tokens: int | None = None
     audio_tokens: int | None = None
+    # Anthropic-specific explicit-cache stats (from `cache_control`
+    # markers). Both are surfaced because the Anthropic API reports them
+    # separately — `cache_creation_input_tokens` is the cache-write cost
+    # (full rate the first time), `cache_read_input_tokens` is the
+    # cache-hit count (90% discount). Customers verifying their caching
+    # is working through our gateway need to see both.
+    cache_creation_input_tokens: int | None = None
+    cache_read_input_tokens: int | None = None
 
 
 class CompletionTokensDetails(BaseModel):

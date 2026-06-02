@@ -303,6 +303,52 @@ def test_simple_text_response_translated() -> None:
     assert completion.usage.prompt_tokens == 10
     assert completion.usage.completion_tokens == 20
     assert completion.usage.total_tokens == 30
+    # Plain responses without cache stats should leave
+    # prompt_tokens_details as None (no fabricated values).
+    assert completion.usage.prompt_tokens_details is None
+
+
+def test_cache_creation_response_preserves_stats() -> None:
+    # First request with cache_control: Anthropic returns
+    # cache_creation_input_tokens (full-rate cache-write count) +
+    # input_tokens (uncached remainder).
+    resp = _anthropic_text_response("ok")
+    resp["usage"] = {
+        "input_tokens": 3,
+        "output_tokens": 11,
+        "cache_creation_input_tokens": 1416,
+        "cache_read_input_tokens": 0,
+    }
+    completion = from_anthropic_response(resp)
+    assert completion.usage is not None
+    assert completion.usage.prompt_tokens == 3
+    assert completion.usage.prompt_tokens_details is not None
+    details = completion.usage.prompt_tokens_details
+    assert details.cache_creation_input_tokens == 1416
+    assert details.cache_read_input_tokens == 0
+    # `cached_tokens` mirrors cache_read for cross-vendor consistency.
+    assert details.cached_tokens == 0
+
+
+def test_cache_read_response_preserves_stats() -> None:
+    # Subsequent request with same prefix: Anthropic returns
+    # cache_read_input_tokens (90%-discount cache-hit count).
+    resp = _anthropic_text_response("ok")
+    resp["usage"] = {
+        "input_tokens": 3,
+        "output_tokens": 11,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1416,
+    }
+    completion = from_anthropic_response(resp)
+    assert completion.usage is not None
+    assert completion.usage.prompt_tokens_details is not None
+    details = completion.usage.prompt_tokens_details
+    assert details.cache_creation_input_tokens == 0
+    assert details.cache_read_input_tokens == 1416
+    # The 1416 cache-hit tokens get mirrored into the unified
+    # `cached_tokens` slot.
+    assert details.cached_tokens == 1416
 
 
 def test_tool_use_block_becomes_tool_call() -> None:

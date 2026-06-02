@@ -19,6 +19,7 @@ from modelmeld.api.schemas import (
     ChatCompletion,
     Choice,
     FunctionCall,
+    PromptTokensDetails,
     ResponseMessage,
     ToolCall,
     Usage,
@@ -380,3 +381,83 @@ def test_full_roundtrip_response_shape() -> None:
     assert "stop_sequence" not in serialized  # excluded because None
     assert serialized["content"] == [{"type": "text", "text": "Done."}]
     assert serialized["usage"] == {"input_tokens": 100, "output_tokens": 4}
+
+
+# ---------------------------------------------------------------------------
+# Cache stats propagation (cache_control round-trip)
+# ---------------------------------------------------------------------------
+#
+# Anthropic surfaces two cache-related counters in its `usage` block when
+# the caller's request carried `cache_control` markers:
+#   - cache_creation_input_tokens (cache write — full rate)
+#   - cache_read_input_tokens (cache hit — 90% discount)
+#
+# Both flow into our internal `ChatCompletion.usage.prompt_tokens_details`
+# (set by `from_anthropic_response`) and must reach the
+# `AnthropicMessagesResponse.usage` on the way out so customers can
+# verify their cache_control markers are working through our gateway.
+
+
+def test_cache_creation_propagates_to_anthropic_usage() -> None:
+    # Simulate a cache-write turn: Anthropic billed 1416 tokens at full
+    # rate (cache_creation), 3 tokens at full rate (non-cached
+    # remainder), 0 tokens at cache_read rate.
+    c = _completion(
+        usage=Usage(
+            prompt_tokens=3,
+            completion_tokens=11,
+            total_tokens=14,
+            prompt_tokens_details=PromptTokensDetails(
+                cache_creation_input_tokens=1416,
+                cache_read_input_tokens=0,
+            ),
+        ),
+    )
+    r = to_anthropic_response(c, request_model="claude-sonnet-4-6")
+    assert r.usage.input_tokens == 3
+    assert r.usage.output_tokens == 11
+    assert r.usage.cache_creation_input_tokens == 1416
+    assert r.usage.cache_read_input_tokens == 0
+
+
+def test_cache_read_propagates_to_anthropic_usage() -> None:
+    # Simulate a cache-hit turn: 1416 tokens served from cache (10%
+    # rate), 3 tokens at full rate, 0 cache_creation.
+    c = _completion(
+        usage=Usage(
+            prompt_tokens=3,
+            completion_tokens=11,
+            total_tokens=14,
+            prompt_tokens_details=PromptTokensDetails(
+                cache_creation_input_tokens=0,
+                cache_read_input_tokens=1416,
+            ),
+        ),
+    )
+    r = to_anthropic_response(c, request_model="claude-sonnet-4-6")
+    assert r.usage.cache_creation_input_tokens == 0
+    assert r.usage.cache_read_input_tokens == 1416
+
+
+def test_no_cache_details_leaves_anthropic_usage_unchanged() -> None:
+    # Adapters that don't report cache details (OSS routes, OpenAI when
+    # no cache hit) must continue to produce a valid Anthropic-shape
+    # usage with the cache fields absent (None → excluded via
+    # exclude_none).
+    c = _completion(
+        usage=Usage(
+            prompt_tokens=50,
+            completion_tokens=10,
+            total_tokens=60,
+            prompt_tokens_details=None,
+        ),
+    )
+    r = to_anthropic_response(c, request_model="some-oss-model")
+    assert r.usage.input_tokens == 50
+    assert r.usage.output_tokens == 10
+    assert r.usage.cache_creation_input_tokens is None
+    assert r.usage.cache_read_input_tokens is None
+
+    serialized = r.model_dump(exclude_none=True)
+    assert "cache_creation_input_tokens" not in serialized["usage"]
+    assert "cache_read_input_tokens" not in serialized["usage"]

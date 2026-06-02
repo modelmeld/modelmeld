@@ -36,6 +36,7 @@ from modelmeld.api.schemas import (
     FunctionDef,
     ImagePart,
     Message,
+    PromptTokensDetails,
     ResponseMessage,
     SystemMessage,
     TextPart,
@@ -273,6 +274,25 @@ def from_anthropic_response(response: dict[str, Any]) -> ChatCompletion:
     in_tok = int(usage.get("input_tokens", 0))
     out_tok = int(usage.get("output_tokens", 0))
 
+    # Preserve Anthropic's cache stats — `cache_creation_input_tokens`
+    # (tokens billed at full rate on cache write) and
+    # `cache_read_input_tokens` (tokens billed at 10% rate on cache
+    # hit). Without this, the customer can't verify their cache_control
+    # markers are working through our gateway, even though they're
+    # getting the discount on Anthropic's bill.
+    cache_write = usage.get("cache_creation_input_tokens")
+    cache_read = usage.get("cache_read_input_tokens")
+    prompt_details: PromptTokensDetails | None = None
+    if cache_write is not None or cache_read is not None:
+        prompt_details = PromptTokensDetails(
+            cache_creation_input_tokens=cache_write,
+            cache_read_input_tokens=cache_read,
+            # Mirror cache_read into the cross-vendor `cached_tokens`
+            # slot so consumers asking "how many tokens hit cache?"
+            # get a consistent answer regardless of upstream vendor.
+            cached_tokens=cache_read,
+        )
+
     return ChatCompletion(
         id=response.get("id") or f"chatcmpl-{uuid4().hex[:24]}",
         created=int(time.time()),
@@ -292,6 +312,7 @@ def from_anthropic_response(response: dict[str, Any]) -> ChatCompletion:
             prompt_tokens=in_tok,
             completion_tokens=out_tok,
             total_tokens=in_tok + out_tok,
+            prompt_tokens_details=prompt_details,
         ),
     )
 
@@ -739,6 +760,16 @@ def to_anthropic_response(
     usage = completion.usage
     in_tok = usage.prompt_tokens if usage else 0
     out_tok = usage.completion_tokens if usage else 0
+    # Anthropic cache stats — surfaced from prompt_tokens_details if the
+    # upstream populated them (only Anthropic-routed requests, today).
+    # Without this propagation, customers can't verify their
+    # `cache_control` markers are taking effect even though they ARE
+    # getting the discount on Anthropic's bill.
+    cache_write: int | None = None
+    cache_read: int | None = None
+    if usage and usage.prompt_tokens_details is not None:
+        cache_write = usage.prompt_tokens_details.cache_creation_input_tokens
+        cache_read = usage.prompt_tokens_details.cache_read_input_tokens
 
     # ID: pass through if it already looks Anthropic-shaped (msg_*);
     # otherwise generate a fresh msg_* id. Preserves upstream id when the
@@ -762,6 +793,8 @@ def to_anthropic_response(
         usage=AnthropicUsage(
             input_tokens=in_tok,
             output_tokens=out_tok,
+            cache_creation_input_tokens=cache_write,
+            cache_read_input_tokens=cache_read,
         ),
     )
 

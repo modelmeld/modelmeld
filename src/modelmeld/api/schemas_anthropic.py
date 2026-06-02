@@ -230,8 +230,20 @@ AnthropicStopReason = Literal[
 
 
 class AnthropicUsage(BaseModel):
-    """Token counts. Anthropic also surfaces cache hit/write stats; we omit
-    them in v1 since we don't honor cache_control upstream."""
+    """Token counts surfaced to the caller in `/v1/messages` responses.
+
+    `cache_creation_input_tokens` / `cache_read_input_tokens` are
+    populated when the upstream (Anthropic) reports them — they're the
+    visible signal that the customer's `cache_control` markers are
+    working through our gateway. Populated end-to-end via
+    `from_anthropic_response` (upstream → ChatCompletion) +
+    `from_openai_anthropic` (ChatCompletion → AnthropicMessagesResponse)
+    so non-streaming responses preserve the cache stats verbatim.
+
+    Streaming responses today propagate input/output tokens only; cache
+    stats in the upstream `message_start` event are not yet plumbed
+    through the stream-translation pipeline (tracked as a follow-up).
+    """
     input_tokens: int
     output_tokens: int
     cache_creation_input_tokens: int | None = None
