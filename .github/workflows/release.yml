@@ -146,7 +146,14 @@ jobs:
         # writes .sigstore.json files next to its inputs (into dist/),
         # which then break gh-action-pypi-publish's expectation that
         # dist/ contains only wheels + sdists. Caused v0.3.0 to fail.
-        uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70  # v1.12.3
+        #
+        # Bumped from v1.12.3 → v1.14.0 (2026-04-07) so the bundled
+        # twine accepts Metadata-Version 2.5 wheels — earlier versions
+        # capped at 2.4 and caused the 0.6.2 publish failure when
+        # hatchling 1.30 started emitting 2.5. Bundling this with
+        # relaxing the hatchling ceiling in pyproject.toml lets us
+        # track upstream build tooling again.
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
         with:
           # No api-token needed — uses OIDC token issued by GitHub to
           # the PyPI Trusted Publisher configured for this project.
