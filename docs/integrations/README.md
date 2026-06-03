@@ -46,6 +46,7 @@ Drop-in setup for the coding agents customers actually run day to day:
 - [**Continue.dev**](continue.md) — VS Code/JetBrains with per-role models
 - [**opencode**](opencode.md) — SST's terminal coding agent with a native provider system
 - [**Zed**](zed.md) — editor agent panel via OpenAI-compatible provider
+- [**Codex CLI**](codex-cli.md) — OpenAI terminal agent via OpenAI-compatible provider
 
 ## Agent framework guides
 
