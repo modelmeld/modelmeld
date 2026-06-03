@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.7.4](https://github.com/modelmeld/modelmeld/compare/v0.7.3...v0.7.4) (2026-06-03)
+
+
+### Documentation
+
+* add Codex CLI integration guide ([#32](https://github.com/modelmeld/modelmeld/issues/32)) ([6ad4351](https://github.com/modelmeld/modelmeld/commit/6ad4351b80bab1265dbdb6938f2549b41815e861)), closes [#11](https://github.com/modelmeld/modelmeld/issues/11)
+
 ## [0.7.3](https://github.com/modelmeld/modelmeld/compare/v0.7.2...v0.7.3) (2026-06-02)
 
 
