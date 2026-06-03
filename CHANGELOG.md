@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.7.3](https://github.com/modelmeld/modelmeld/compare/v0.7.2...v0.7.3) (2026-06-02)
+
+
+### Documentation
+
+* rewrite README for top-of-fold conversion ([d0d33ac](https://github.com/modelmeld/modelmeld/commit/d0d33ac1f78674e7658b4d337ff53365aac24d4d))
+
 ## [0.7.2](https://github.com/modelmeld/modelmeld/compare/v0.7.1...v0.7.2) (2026-06-02)
 
 
