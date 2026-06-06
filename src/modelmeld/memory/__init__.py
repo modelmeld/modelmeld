@@ -54,6 +54,10 @@ from modelmeld.memory.in_memory import (
     InMemoryMemoryStore,
     TenantMismatchError,
 )
+from modelmeld.memory.mem0_provider import (
+    Mem0DependencyError,
+    Mem0MemoryProvider,
+)
 from modelmeld.memory.postgres import (
     MissingPostgresDependencyError,
     PostgresMemoryStore,
@@ -88,6 +92,8 @@ __all__ = [
     "Fact",
     "InMemoryMemoryStore",
     "InvalidTenantIdError",
+    "Mem0DependencyError",
+    "Mem0MemoryProvider",
     "MemoryContext",
     "MemoryHeaderError",
     "MemoryIdentity",

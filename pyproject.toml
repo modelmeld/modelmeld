@@ -46,6 +46,10 @@ openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.30"]
 all-providers = ["openai>=1.40", "anthropic>=0.30"]
 postgres = ["sqlalchemy[asyncio]>=2.0", "psycopg[binary]>=3.2"]
+# Gateway-native memory backend (memory_backend="mem0"). Wraps the
+# Apache-2.0 mem0 OSS core behind the MemoryProvider seam — the gateway
+# does the request-path injection; mem0 does extraction + retrieval.
+mem0 = ["mem0ai>=2.0,<3"]
 # Cross-tokenizer counting. Provides accurate per-model token
 # counts via tiktoken / anthropic / huggingface backends bundled by litellm.
 tokenizer = ["litellm>=1.40"]
@@ -59,6 +63,7 @@ dev = [
     "aiosqlite>=0.19",
     "openai>=1.40",
     "anthropic>=0.30",
+    "mem0ai>=2.0,<3",      # mem0 provider tests (memory_backend="mem0")
 ]
 [project.scripts]
 # Customer-facing CLI. `modelmeld setup --tool claude-code` is the
