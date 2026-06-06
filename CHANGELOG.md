@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.8.1](https://github.com/modelmeld/modelmeld/compare/v0.8.0...v0.8.1) (2026-06-06)
+
+
+### Bug Fixes
+
+* **api:** pin chat response model field to the canonical routed model ([#43](https://github.com/modelmeld/modelmeld/issues/43)) ([61949e7](https://github.com/modelmeld/modelmeld/commit/61949e77437fe618ec143db3045131d3ae33b611))
+
 ## [0.8.0](https://github.com/modelmeld/modelmeld/compare/v0.7.5...v0.8.0) (2026-06-06)
 
 
