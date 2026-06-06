@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.9.0](https://github.com/modelmeld/modelmeld/compare/v0.8.2...v0.9.0) (2026-06-06)
+
+
+### Features
+
+* **responses:** /v1/responses endpoint with streaming (Codex CLI surface) ([#48](https://github.com/modelmeld/modelmeld/issues/48)) ([d95d3af](https://github.com/modelmeld/modelmeld/commit/d95d3af2a54415ea6ca0769faafac41522ce3c4c))
+
 ## [0.8.2](https://github.com/modelmeld/modelmeld/compare/v0.8.1...v0.8.2) (2026-06-06)
 
 
