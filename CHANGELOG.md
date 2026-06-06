@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.7.5](https://github.com/modelmeld/modelmeld/compare/v0.7.4...v0.7.5) (2026-06-06)
+
+
+### Refactors
+
+* **memory:** introduce MemoryProvider seam over the tiered store ([#39](https://github.com/modelmeld/modelmeld/issues/39)) ([960eae8](https://github.com/modelmeld/modelmeld/commit/960eae8697624aff26304753285621ca1ee111b5))
+
 ## [0.7.4](https://github.com/modelmeld/modelmeld/compare/v0.7.3...v0.7.4) (2026-06-03)
 
 
