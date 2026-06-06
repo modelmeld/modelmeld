@@ -17,6 +17,7 @@ from modelmeld.config import GatewaySettings
 from modelmeld.hooks import HookRegistry
 from modelmeld.memory import (
     InMemoryMemoryStore,
+    Mem0MemoryProvider,
     MemoryProvider,
     MemoryStore,
     PostgresMemoryStore,
@@ -95,10 +96,15 @@ def build_app(
         )
     else:
         app.state.memory_store = InMemoryMemoryStore()
-    # The routes talk to a MemoryProvider, not the store directly. The default
-    # provider wraps the tiered store above; alternative engines (e.g. Mem0)
-    # are selected here in a later sprint via settings.memory_backend.
-    app.state.memory_provider = TieredMemoryProvider(app.state.memory_store)
+    # The routes talk to a MemoryProvider, not the store directly. Default
+    # wraps the tiered store above; memory_backend="mem0" swaps in a
+    # Mem0-backed provider (optional dep: pip install modelmeld[mem0]).
+    if app.state.settings.memory_backend == "mem0":
+        app.state.memory_provider = Mem0MemoryProvider.from_settings(
+            app.state.settings
+        )
+    else:
+        app.state.memory_provider = TieredMemoryProvider(app.state.memory_store)
     # Token counter. Default char-based; settings can switch to
     # litellm. Pass `token_counter=` to inject a custom impl in tests.
     app.state.token_counter = (

@@ -138,8 +138,30 @@ class GatewaySettings(BaseSettings):
     # Memory backend. Default remains in-process for dev/tests. Set
     # MODELMELD_MEMORY_BACKEND=postgres plus MODELMELD_MEMORY_DATABASE_URL for
     # a SQL-backed store shared across workers.
-    memory_backend: Literal["in_memory", "postgres"] = "in_memory"
+    memory_backend: Literal["in_memory", "postgres", "mem0"] = "in_memory"
     memory_database_url: str | None = None
+
+    # Mem0 provider (memory_backend="mem0"). Optional dep: pip install
+    # modelmeld[mem0]. The gateway does request-path injection; mem0 does
+    # extraction + retrieval. Tenant isolation uses a SEPARATE vector
+    # collection per tenant (not shared-collection metadata filters).
+    # `infer=True` runs an LLM extraction call per write — route it through
+    # this gateway via mem0_base_url so it gets cost-routed (see docs).
+    mem0_infer: bool = True
+    mem0_top_k: int = 10
+    mem0_rerank: bool = False
+    mem0_embedding_dims: int = 1536
+    mem0_llm_model: str = "gpt-5-mini"
+    mem0_embedder_model: str = "text-embedding-3-small"
+    # Route mem0's extraction LLM + embedder at an OpenAI-compatible endpoint
+    # (e.g. this gateway). None → mem0's default (api.openai.com).
+    mem0_base_url: str | None = None
+    mem0_api_key: str | None = None
+    # Vector store. URL → shared qdrant server (per-tenant collection);
+    # else on-disk embedded qdrant under this path (per-tenant subdir).
+    mem0_vector_store_url: str | None = None
+    mem0_vector_store_api_key: str | None = None
+    mem0_vector_store_path: str | None = None
 
     # PII scrubbing. When True, message text is scrubbed before
     # any egress adapter call (is_egress=True). Local adapters (stub, vllm) are
