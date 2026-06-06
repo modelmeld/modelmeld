@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.8.0](https://github.com/modelmeld/modelmeld/compare/v0.7.5...v0.8.0) (2026-06-06)
+
+
+### Features
+
+* **memory:** gateway-native memory via Mem0 provider (modelmeld[mem0]) ([#41](https://github.com/modelmeld/modelmeld/issues/41)) ([b4ed0d5](https://github.com/modelmeld/modelmeld/commit/b4ed0d55e9c58d6f53b8fadebc92f861031fbb1c))
+
 ## [0.7.5](https://github.com/modelmeld/modelmeld/compare/v0.7.4...v0.7.5) (2026-06-06)
 
 
