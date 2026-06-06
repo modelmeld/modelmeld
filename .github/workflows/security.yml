@@ -30,7 +30,13 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install pip-audit
-        run: pip install pip-audit
+        # Upgrade pip first: pip-audit audits the whole environment, so a CVE
+        # in the runner's stock pip (e.g. PYSEC-2026-196 in pip 26.1.1) would
+        # fail --strict even though it's build tooling, not a project dep.
+        # ci.yml and release.yml already do this; keep the three consistent.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
       - name: Audit
         # --skip-editable skips local-path packages. --strict treats any
         # vuln as a failure; remove if you need to triage MEDIUM/LOW
