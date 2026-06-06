@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 
 import httpx
@@ -15,6 +16,8 @@ from modelmeld.api.schemas import (
     ChatCompletionChunk,
     ChatCompletionRequest,
     Choice,
+    ChoiceDelta,
+    ChunkChoice,
     FunctionCall,
     ResponseMessage,
     SystemMessage,
@@ -42,8 +45,16 @@ class _StubAdapter(ProviderAdapter):
     async def stream_chat(
         self, request: ChatCompletionRequest,
     ) -> AsyncIterator[ChatCompletionChunk]:
-        if False:  # pragma: no cover
-            yield
+        text = self._completion.choices[0].message.content or ""
+        yield ChatCompletionChunk(
+            id="c", created=0, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(role="assistant", content=text))],
+        )
+        yield ChatCompletionChunk(
+            id="c", created=0, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(), finish_reason="stop")],
+            usage=self._completion.usage,
+        )
 
     async def health(self) -> bool:
         return True
@@ -129,7 +140,35 @@ async def test_tool_calls_surface_as_function_call_items() -> None:
     assert fcs[0]["call_id"] == "call_42"
 
 
-async def test_streaming_not_yet_supported_returns_501() -> None:
-    app = build_app(adapter=_StubAdapter(_text_completion("x")))
-    resp = await _post(app, {"model": "m", "input": "hi", "stream": True})
-    assert resp.status_code == 501
+def _parse_responses_sse(raw: str) -> list[dict]:
+    out: list[dict] = []
+    for block in raw.split("\n\n"):
+        for line in block.split("\n"):
+            if line.startswith("data: "):
+                out.append(json.loads(line[len("data: "):]))
+    return out
+
+
+async def test_streaming_emits_responses_sse_lifecycle() -> None:
+    adapter = _StubAdapter(_text_completion("Hello world", model="qwen3-coder-next"))
+    app = build_app(adapter=adapter)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post(
+            "/v1/responses",
+            json={"model": "anthropic/modelmeld-auto", "input": "hi", "stream": True},
+        )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert resp.headers["x-modelmeld-routed-to"] == "stub-responses"
+
+    events = _parse_responses_sse(resp.text)
+    types = [e["type"] for e in events]
+    assert types[0] == "response.created"
+    assert types[-1] == "response.completed"
+    assert "response.output_text.delta" in types
+    text = "".join(e["delta"] for e in events if e["type"] == "response.output_text.delta")
+    assert text == "Hello world"
+    assert events[-1]["response"]["status"] == "completed"

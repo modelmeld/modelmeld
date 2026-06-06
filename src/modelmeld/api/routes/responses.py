@@ -3,14 +3,16 @@
 
 """POST /v1/responses — OpenAI Responses API surface (Codex CLI plug-and-play).
 
-Phase 1 is non-streaming. The handler reuses the chat pipeline: translate the
-Responses request to the internal Chat shape, run the same routing / BYOK /
-subscription-passthrough / PII-scrub / capability-routing path, then translate
-the ChatCompletion back to a Responses result. Audit headers, hooks, and memory
-write-back come for free via `_completion_with_failover`.
+The handler reuses the chat pipeline: translate the Responses request to the
+internal Chat shape, run the same routing / BYOK / subscription-passthrough /
+PII-scrub / capability-routing path, then translate back. Non-streaming goes
+through `_completion_with_failover`; streaming emits Responses SSE events via
+`ResponsesStreamTranslator`. Audit headers, hooks, and memory write-back are
+shared with the chat route.
 
-`stream=true` returns 501 until the Responses SSE event stream lands (Phase 2);
-Codex CLI streams, so this endpoint isn't yet a full Codex drop-in.
+Streaming covers text (Phase 2a). Tool-call streaming (function_call items +
+response.function_call_arguments.* events) is a 2b follow-up; non-streaming
+already handles tool calls.
 """
 
 from __future__ import annotations
@@ -19,20 +21,29 @@ import time
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from modelmeld.adapters import AdapterError
 from modelmeld.api._safe_error_detail import safe_error_detail
 from modelmeld.api.auth_detection import classify_authorization
 from modelmeld.api.byok import build_byok_adapters, extract_byok_credentials
 from modelmeld.api.routes.chat import (
+    _apply_model_override,
     _auth_identity,
     _byok_required_detail,
+    _canonical_model_id_for_header,
+    _chunk_content_tokens,
+    _chunk_text_pieces,
     _completion_with_failover,
     _fire_failure,
+    _fire_success_stream,
     _is_byok_required_error,
     _is_no_eligible_model_error,
     _maybe_scrub,
     _no_eligible_model_detail,
+    _routing_headers,
+    _try_open_stream,
+    _write_memory_turns_streaming,
 )
 from modelmeld.api.routing_hints import RoutingHintError, extract_hints_from_headers
 from modelmeld.api.schemas_responses import ResponsesRequest
@@ -55,6 +66,10 @@ from modelmeld.translation.openai_responses import (
     from_responses_request,
     to_responses_response,
 )
+from modelmeld.translation.responses_stream import (
+    ResponsesStreamTranslator,
+    format_responses_sse,
+)
 
 router = APIRouter()
 
@@ -64,16 +79,7 @@ async def responses(
     body: ResponsesRequest,
     fastapi_request: Request,
     response: Response,
-) -> JSONResponse:
-    if body.stream:
-        raise HTTPException(
-            status_code=501,
-            detail=(
-                "streaming is not yet supported on /v1/responses; "
-                "set stream=false (Responses SSE streaming is a follow-up)"
-            ),
-        )
-
+) -> JSONResponse | StreamingResponse:
     rt: Router = fastapi_request.app.state.router
     scrubber: Scrubber | None = fastapi_request.app.state.scrubber
     hooks: HookRegistry = fastapi_request.app.state.hooks
@@ -153,8 +159,15 @@ async def responses(
     internal_request = inject_into_request(internal_request, mem_context)
     outgoing, redactions = _maybe_scrub(internal_request, decision, scrubber)
 
-    # Shared dispatch: failover, audit headers (on `response`), hooks, memory
-    # write-back, and the canonical-model pin all happen here.
+    if body.stream:
+        return await _stream_responses_with_failover(
+            rt, decision, outgoing, redactions, hooks, request_id, started,
+            identity, provider, mem_identity, token_counter,
+            hints=hints, model_registry=model_registry,
+        )
+
+    # Non-streaming. Shared dispatch: failover, audit headers (on `response`),
+    # hooks, memory write-back, and the canonical-model pin all happen here.
     completion = await _completion_with_failover(
         rt, decision, outgoing, redactions, hooks, request_id, started, response,
         identity, provider, mem_identity, token_counter,
@@ -166,3 +179,129 @@ async def responses(
         content=payload.model_dump(exclude_none=True),
         headers=dict(response.headers),
     )
+
+
+# ---------------------------------------------------------------------------
+# Streaming (Responses SSE)
+# ---------------------------------------------------------------------------
+
+async def _stream_responses_with_failover(
+    rt: Router,
+    decision,
+    request,
+    redactions: list,
+    hooks: HookRegistry,
+    request_id: str,
+    started: float,
+    identity: dict[str, str | None] | None,
+    provider: MemoryProvider | None,
+    mem_identity,
+    token_counter: TokenCounter | None,
+    *,
+    hints=None,
+    model_registry=None,
+) -> StreamingResponse:
+    failover_from: str | None = None
+    primary_aiter, first_chunk, primary_error = await _try_open_stream(
+        decision.adapter, _apply_model_override(request, decision),
+    )
+    if first_chunk is None and primary_aiter is None:
+        fallback = await rt.route_after_failure(decision, request, error=primary_error)
+        if fallback is None:
+            err = primary_error or AdapterError("primary stream open failed")
+            await _fire_failure(
+                hooks, request_id, started, request, decision, redactions, None,
+                err, "adapter_error", identity,
+            )
+            raise HTTPException(status_code=502, detail=safe_error_detail(err))
+        failover_from = str(decision.tier)
+        decision = fallback
+        primary_aiter, first_chunk, _ = await _try_open_stream(
+            decision.adapter, _apply_model_override(request, decision),
+        )
+        if primary_aiter is None and first_chunk is None:
+            await _fire_failure(
+                hooks, request_id, started, request, decision, redactions,
+                failover_from, AdapterError("fallback stream open failed"),
+                "adapter_error", identity,
+            )
+            raise HTTPException(status_code=502, detail="fallback stream open failed")
+
+    headers = _routing_headers(
+        decision, redactions, failover_from, hints=hints, model_registry=model_registry,
+    )
+    served_model = (
+        _canonical_model_id_for_header(
+            decision.model_id_override, decision.adapter.name, model_registry,
+        )
+        or decision.model_id_override
+        or request.model
+    )
+    return StreamingResponse(
+        _sse_responses(
+            primary_aiter, first_chunk, hooks, request_id, started, request,
+            decision, redactions, failover_from, identity, provider, mem_identity,
+            token_counter, served_model,
+        ),
+        media_type="text/event-stream",
+        headers=headers,
+    )
+
+
+async def _sse_responses(
+    aiter,
+    first,
+    hooks: HookRegistry,
+    request_id: str,
+    started: float,
+    request,
+    decision,
+    redactions: list,
+    failover_from: str | None,
+    identity: dict[str, str | None] | None,
+    provider: MemoryProvider | None,
+    mem_identity,
+    token_counter: TokenCounter | None,
+    served_model: str,
+):
+    translator = ResponsesStreamTranslator(model=served_model)
+    output_tokens = 0
+    last_usage = None
+    accumulated_text: list[str] = []
+    error: Exception | None = None
+    try:
+        if first is not None:
+            for event in translator.translate_chunk(first):
+                yield format_responses_sse(event)
+            output_tokens += _chunk_content_tokens(first)
+            accumulated_text.extend(_chunk_text_pieces(first))
+            if first.usage is not None:
+                last_usage = first.usage
+        if aiter is not None:
+            async for chunk in aiter:
+                for event in translator.translate_chunk(chunk):
+                    yield format_responses_sse(event)
+                output_tokens += _chunk_content_tokens(chunk)
+                accumulated_text.extend(_chunk_text_pieces(chunk))
+                if chunk.usage is not None:
+                    last_usage = chunk.usage
+    except Exception as e:
+        error = e
+
+    if error is None:
+        # Responses SSE has no [DONE] terminator; response.completed ends it.
+        for event in translator.finalize():
+            yield format_responses_sse(event)
+        await _fire_success_stream(
+            hooks, request_id, started, request, decision, redactions, failover_from,
+            output_tokens, last_usage, identity,
+        )
+        await _write_memory_turns_streaming(
+            provider, mem_identity, request, "".join(accumulated_text),
+            output_tokens, decision, token_counter,
+        )
+    else:
+        await _fire_failure(
+            hooks, request_id, started, request, decision, redactions, failover_from,
+            error, "stream_error", identity,
+        )
