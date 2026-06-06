@@ -25,8 +25,10 @@ from modelmeld.api.schemas import (
     AssistantMessage,
     ChatCompletion,
     ChatCompletionRequest,
+    FunctionDef,
     Message,
     SystemMessage,
+    Tool,
     UserMessage,
 )
 from modelmeld.api.schemas_responses import (
@@ -58,25 +60,30 @@ def _to_message(role: str, text: str) -> Message:
     return UserMessage(role="user", content=text)
 
 
-def _to_chat_tools(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+def _to_chat_tools(tools: list[dict[str, Any]] | None) -> list[Tool] | None:
     """Responses function tools are flat (`{type, name, parameters, …}`); Chat
     nests them under `function`. Translate function tools; drop other tool types
     (e.g. built-in `web_search`) which have no Chat-Completions equivalent."""
     if not tools:
         return None
-    out: list[dict[str, Any]] = []
+    out: list[Tool] = []
     for tool in tools:
         if tool.get("type") != "function":
             continue
-        fn = tool.get("function") or {
-            "name": tool.get("name"),
-            "description": tool.get("description"),
-            "parameters": tool.get("parameters"),
-        }
-        out.append({
-            "type": "function",
-            "function": {k: v for k, v in fn.items() if v is not None},
-        })
+        # Flat Responses shape or already-nested Chat shape.
+        fn = tool.get("function") or tool
+        name = fn.get("name")
+        if not name:
+            continue
+        out.append(Tool(
+            type="function",
+            function=FunctionDef(
+                name=name,
+                description=fn.get("description"),
+                parameters=fn.get("parameters"),
+                strict=fn.get("strict"),
+            ),
+        ))
     return out or None
 
 
