@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 
 import httpx
@@ -19,6 +20,8 @@ from modelmeld.api.schemas import (
     ChatCompletionChunk,
     ChatCompletionRequest,
     Choice,
+    ChoiceDelta,
+    ChunkChoice,
     ResponseMessage,
     Usage,
 )
@@ -239,6 +242,100 @@ async def test_routed_model_header_uses_canonical_when_dispatch_uses_provider_sl
     # The dispatch-form string never appears in any header value
     for v in resp.headers.values():
         assert "some/dispatch-form" not in v
+
+
+# ---------------------------------------------------------------------------
+# #47: response BODY must not leak an upstream-provider model slug
+# ---------------------------------------------------------------------------
+
+# A provider-specific catalog id an adapter might echo back from upstream
+# (e.g. a hosted-pool provider's internal model name). The body must never
+# surface this when capability routing substituted the model.
+_LEAK_SLUG = "accounts/secret-provider/models/internal-123"
+
+
+class _LeakyAdapter(_FakeAdapter):
+    """Adapter whose RESPONSE carries a provider slug different from the
+    requested model — the real #47 leak vector."""
+
+    async def chat(self, request: ChatCompletionRequest) -> ChatCompletion:
+        self.received_models.append(request.model)
+        return ChatCompletion(
+            model=_LEAK_SLUG,
+            choices=[Choice(
+                index=0, message=ResponseMessage(content="ok"), finish_reason="stop",
+            )],
+            usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        )
+
+
+class _LeakyStreamingAdapter(_FakeAdapter):
+    """Streaming variant: chunks carry the provider slug."""
+
+    async def stream_chat(
+        self, request: ChatCompletionRequest
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        self.received_models.append(request.model)
+        yield ChatCompletionChunk(
+            id="x", created=0, model=_LEAK_SLUG,
+            choices=[ChunkChoice(
+                index=0, delta=ChoiceDelta(content="ok"), finish_reason="stop",
+            )],
+        )
+
+
+def _capability_app(adapter: ProviderAdapter):
+    """Capability-routing app — the gateway substitutes a model the client
+    didn't ask for, so model_id_override is set on the decision."""
+    registry = ModelRegistry([_entry("canonical-name", "test-provider", 0.04, 0.04, simple_qa=0.85)])
+    scout = CapabilityScout(
+        registry=registry, quality_threshold=0.80,
+        eligible_providers=frozenset({"test-provider"}),
+    )
+    return build_app(
+        settings=GatewaySettings(),
+        router=CapabilityRouter(
+            scout=scout, adapters_by_provider={"test-provider": adapter},
+        ),
+        model_registry=registry,
+    )
+
+
+async def test_response_body_does_not_leak_provider_slug() -> None:
+    """Non-streaming: the adapter returns a provider slug, but the body echoes
+    the client's requested model — the slug never reaches the client."""
+    adapter = _LeakyAdapter("test-provider")
+    app = _capability_app(adapter)
+    payload = _payload("ping")
+
+    resp = await _post(app, payload)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Body shows the canonical routed model (matches the header), never the slug.
+    assert body["model"] == "canonical-name"
+    assert body["model"] == resp.headers["x-modelmeld-routed-model"]
+    assert _LEAK_SLUG not in json.dumps(body)
+
+
+async def test_streaming_body_does_not_leak_provider_slug() -> None:
+    """Streaming: every chunk's model echoes the requested model, and the slug
+    appears nowhere in the SSE payload."""
+    adapter = _LeakyStreamingAdapter("test-provider")
+    app = _capability_app(adapter)
+    payload = {**_payload("ping"), "stream": True}
+
+    resp = await _post(app, payload)
+
+    assert resp.status_code == 200
+    models_seen = [
+        json.loads(line[6:])["model"]
+        for line in resp.text.splitlines()
+        if line.startswith("data: ") and "[DONE]" not in line
+    ]
+    assert models_seen, "expected at least one streamed chunk"
+    assert all(m == "canonical-name" for m in models_seen)
+    assert _LEAK_SLUG not in resp.text
 
 
 # ---------------------------------------------------------------------------
