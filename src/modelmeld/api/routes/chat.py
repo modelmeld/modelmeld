@@ -453,6 +453,18 @@ async def _completion_with_failover(
                 ),
             ) from secondary
 
+    # #47: the response body must not surface an upstream-provider model slug.
+    # Pin the served-model field to the canonical routed model — the same value
+    # as the x-modelmeld-routed-model header — overwriting whatever string the
+    # adapter echoed from upstream. No-op when the adapter already returned the
+    # canonical id. Done before caching so cached bodies are clean too.
+    if decision.model_id_override:
+        canonical = _canonical_model_id_for_header(
+            decision.model_id_override, decision.adapter.name, model_registry,
+        ) or decision.model_id_override
+        if completion.model != canonical:
+            completion = completion.model_copy(update={"model": canonical})
+
     for key, value in _routing_headers(
         decision, redactions, failover_from,
         hints=hints,
@@ -544,11 +556,19 @@ async def _stream_with_failover(
     )
     if cache_status is not None:
         headers["x-modelmeld-cache"] = cache_status
+    # #47: canonical routed model to pin on every streamed chunk (matches the
+    # x-modelmeld-routed-model header). None when no model override is in play.
+    served_model = (
+        _canonical_model_id_for_header(
+            decision.model_id_override, decision.adapter.name, model_registry,
+        ) or decision.model_id_override
+        if decision.model_id_override else None
+    )
     return StreamingResponse(
         _sse_stream(
             primary_aiter, first_chunk, hooks, request_id, started,
             request, decision, redactions, failover_from, identity,
-            provider, mem_identity, token_counter,
+            provider, mem_identity, token_counter, served_model,
         ),
         media_type="text/event-stream",
         headers=headers,
@@ -592,6 +612,7 @@ async def _sse_stream(
     provider: MemoryProvider | None,
     mem_identity: MemoryIdentity,
     token_counter: TokenCounter | None,
+    served_model: str | None,
 ) -> AsyncIterator[str]:
     output_tokens = 0
     last_usage = None
@@ -599,6 +620,7 @@ async def _sse_stream(
     error: Exception | None = None
     try:
         if first is not None:
+            first = _pin_chunk_model(first, served_model)
             yield f"data: {first.model_dump_json(exclude_none=True)}\n\n"
             output_tokens += _chunk_content_tokens(first)
             accumulated_text.extend(_chunk_text_pieces(first))
@@ -606,6 +628,7 @@ async def _sse_stream(
                 last_usage = first.usage
         if aiter is not None:
             async for chunk in aiter:
+                chunk = _pin_chunk_model(chunk, served_model)
                 yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
                 output_tokens += _chunk_content_tokens(chunk)
                 accumulated_text.extend(_chunk_text_pieces(chunk))
@@ -647,6 +670,19 @@ def _chunk_text_pieces(chunk: ChatCompletionChunk) -> list[str]:
         if choice.delta.content:
             pieces.append(choice.delta.content)
     return pieces
+
+
+def _pin_chunk_model(
+    chunk: ChatCompletionChunk,
+    served_model: str | None,
+) -> ChatCompletionChunk:
+    """#47: pin a streamed chunk's model field to the canonical routed model so
+    no upstream-provider slug reaches the SSE payload. No-op when there was no
+    model override (served_model is None) or the chunk already matches.
+    """
+    if served_model and chunk.model and chunk.model != served_model:
+        return chunk.model_copy(update={"model": served_model})
+    return chunk
 
 
 # ---------------------------------------------------------------------------
