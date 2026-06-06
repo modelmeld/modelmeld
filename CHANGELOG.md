@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.8.2](https://github.com/modelmeld/modelmeld/compare/v0.8.1...v0.8.2) (2026-06-06)
+
+
+### Bug Fixes
+
+* **messages:** surface cache_control stats on the streaming path ([#46](https://github.com/modelmeld/modelmeld/issues/46)) ([f5aacc5](https://github.com/modelmeld/modelmeld/commit/f5aacc59d49c7c582eddd7a2efc739377eded4a2))
+
 ## [0.8.1](https://github.com/modelmeld/modelmeld/compare/v0.8.0...v0.8.1) (2026-06-06)
 
 
