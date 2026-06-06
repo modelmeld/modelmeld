@@ -82,9 +82,9 @@ from modelmeld.cache import (
 from modelmeld.hooks import HookRegistry
 from modelmeld.memory import (
     ANONYMOUS_TENANT_ID,
+    MemoryContext,
     MemoryHeaderError,
-    MemoryStore,
-    assemble_context,
+    MemoryProvider,
     extract_memory_identity,
     inject_into_request,
 )
@@ -253,8 +253,8 @@ async def anthropic_messages(
     rt: Router = fastapi_request.app.state.router
     scrubber: Scrubber | None = fastapi_request.app.state.scrubber
     hooks: HookRegistry = fastapi_request.app.state.hooks
-    memory: MemoryStore | None = getattr(
-        fastapi_request.app.state, "memory_store", None,
+    provider: MemoryProvider | None = getattr(
+        fastapi_request.app.state, "memory_provider", None,
     )
     token_counter: TokenCounter | None = getattr(
         fastapi_request.app.state, "token_counter", None,
@@ -404,7 +404,10 @@ async def anthropic_messages(
 
     # Memory injection. Operates on internal shape;
     # exact same call as the chat route.
-    mem_context = await assemble_context(memory, mem_identity)
+    mem_context = (
+        await provider.retrieve(mem_identity, internal_request)
+        if provider is not None else MemoryContext()
+    )
     internal_request = inject_into_request(internal_request, mem_context)
     outgoing, redactions = _maybe_scrub(internal_request, decision, scrubber)
 
@@ -418,7 +421,7 @@ async def anthropic_messages(
         input_tokens = _estimate_input_tokens(outgoing, token_counter)
         return await _stream_messages_with_failover(
             rt, decision, outgoing, redactions, hooks, request_id, started,
-            identity, memory, mem_identity, token_counter,
+            identity, provider, mem_identity, token_counter,
             request_model=body.model,
             input_tokens=input_tokens,
             cache_status=cache_status,
@@ -568,7 +571,7 @@ async def anthropic_messages(
         completion, identity, cache_status=miss_status,
     )
     await _write_memory_turns(
-        memory, mem_identity, outgoing, completion, decision, token_counter,
+        provider, mem_identity, outgoing, completion, decision, token_counter,
     )
 
     # Translate internal ChatCompletion → Anthropic response shape.
@@ -690,7 +693,7 @@ async def _stream_messages_with_failover(
     request_id: str,
     started: float,
     identity: dict[str, str | None] | None,
-    memory: MemoryStore | None,
+    provider: MemoryProvider | None,
     mem_identity: Any,       # MemoryIdentity
     token_counter: TokenCounter | None,
     *,
@@ -759,7 +762,7 @@ async def _stream_messages_with_failover(
         _sse_anthropic_stream(
             primary_aiter, first_chunk, hooks, request_id, started,
             request, decision, redactions, failover_from, identity,
-            memory, mem_identity, token_counter,
+            provider, mem_identity, token_counter,
             request_model=request_model, input_tokens=input_tokens,
         ),
         media_type="text/event-stream",
@@ -778,7 +781,7 @@ async def _sse_anthropic_stream(
     redactions: list,
     failover_from: str | None,
     identity: dict[str, str | None] | None,
-    memory: MemoryStore | None,
+    provider: MemoryProvider | None,
     mem_identity: Any,       # MemoryIdentity
     token_counter: TokenCounter | None,
     *,
@@ -832,7 +835,7 @@ async def _sse_anthropic_stream(
             output_tokens, last_usage, identity,
         )
         await _write_memory_turns_streaming(
-            memory, mem_identity, request, "".join(accumulated_text),
+            provider, mem_identity, request, "".join(accumulated_text),
             output_tokens, decision, token_counter,
         )
     else:
