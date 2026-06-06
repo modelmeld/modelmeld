@@ -321,6 +321,36 @@ def from_anthropic_response(response: dict[str, Any]) -> ChatCompletion:
 # Streaming: Anthropic events → OpenAI chunks
 # ---------------------------------------------------------------------------
 
+def _usage_from_anthropic_message_start(usage_dict: dict[str, Any]) -> Usage | None:
+    """Carry an Anthropic `message_start` usage block — input tokens + cache
+    stats — onto the first OpenAI chunk, so downstream consumers (and the
+    OpenAI→Anthropic re-translation) can surface them. Anthropic reports cache
+    counts ONLY in message_start, so this is the one chance to capture them in a
+    stream. Returns None when there's nothing to carry. Mirrors
+    `from_anthropic_response`.
+    """
+    if not usage_dict:
+        return None
+    cache_write = usage_dict.get("cache_creation_input_tokens")
+    cache_read = usage_dict.get("cache_read_input_tokens")
+    prompt_details: PromptTokensDetails | None = None
+    if cache_write is not None or cache_read is not None:
+        prompt_details = PromptTokensDetails(
+            cache_creation_input_tokens=cache_write,
+            cache_read_input_tokens=cache_read,
+            cached_tokens=cache_read,
+        )
+    in_tok = int(usage_dict.get("input_tokens", 0))
+    if prompt_details is None and in_tok == 0:
+        return None
+    return Usage(
+        prompt_tokens=in_tok,
+        completion_tokens=0,
+        total_tokens=in_tok,
+        prompt_tokens_details=prompt_details,
+    )
+
+
 class AnthropicStreamTranslator:
     """Accumulates state across an Anthropic stream and emits OpenAI chunks.
 
@@ -358,9 +388,13 @@ class AnthropicStreamTranslator:
             self.id = message.get("id", self.id)
             self.model = message.get("model", self.model)
             self.created = int(time.time())
-            # Emit the role chunk now.
+            # Emit the role chunk now, carrying any cache stats from the
+            # message_start usage (the only place Anthropic reports them).
             self.role_emitted = True
-            return self._chunk(ChoiceDelta(role="assistant", content=""))
+            return self._chunk(
+                ChoiceDelta(role="assistant", content=""),
+                usage=_usage_from_anthropic_message_start(message.get("usage", {})),
+            )
 
         if etype == "content_block_start":
             idx = event.get("index", 0)
@@ -889,6 +923,10 @@ class OpenAIToAnthropicStreamTranslator:
         # Accumulated state, emitted at finalize().
         self._finish_reason: FinishReason | None = None
         self._final_output_tokens: int = 0
+        # Anthropic cache stats, captured from the first chunk that carries them
+        # (they ride in prompt_tokens_details) and emitted in message_start.
+        self._cache_creation: int | None = None
+        self._cache_read: int | None = None
         # Whether any content_block was ever opened. If still False at finalize,
         # emit a single empty text block so Anthropic's "≥1 block per response"
         # invariant holds.
@@ -900,14 +938,26 @@ class OpenAIToAnthropicStreamTranslator:
         """Process one OpenAI chunk; return 0+ Anthropic events to emit."""
         events: list[AnthropicStreamEvent] = []
 
+        # Capture usage (output tokens + Anthropic cache stats) BEFORE emitting
+        # message_start: the cache counts ride on the first chunk, and
+        # message_start is emitted on that same chunk, so they must be read
+        # first to make it into the event.
+        if chunk.usage is not None:
+            self._final_output_tokens = chunk.usage.completion_tokens
+            details = chunk.usage.prompt_tokens_details
+            if details is not None:
+                if details.cache_creation_input_tokens is not None:
+                    self._cache_creation = details.cache_creation_input_tokens
+                if details.cache_read_input_tokens is not None:
+                    self._cache_read = details.cache_read_input_tokens
+
         # message_start (exactly once, on the first chunk).
         if not self._message_started:
             self._message_started = True
             self._message_id = self._normalize_id(chunk.id)
             events.append(self._make_message_start())
 
-        # Pull finish_reason / usage from the chunk regardless of choices
-        # shape. Some adapters emit a final usage-only chunk with choices=[].
+        # Pull finish_reason from the chunk regardless of choices shape.
         if chunk.choices:
             choice = chunk.choices[0]
             delta = choice.delta
@@ -923,9 +973,6 @@ class OpenAIToAnthropicStreamTranslator:
 
             if choice.finish_reason is not None:
                 self._finish_reason = choice.finish_reason
-
-        if chunk.usage is not None:
-            self._final_output_tokens = chunk.usage.completion_tokens
 
         return events
 
@@ -998,6 +1045,8 @@ class OpenAIToAnthropicStreamTranslator:
                 usage=AnthropicUsage(
                     input_tokens=self.input_tokens,
                     output_tokens=0,
+                    cache_creation_input_tokens=self._cache_creation,
+                    cache_read_input_tokens=self._cache_read,
                 ),
             ),
         )
