@@ -31,7 +31,6 @@ from modelmeld.api.schemas import (
     ChatCompletionChunk,
     ChatCompletionRequest,
     TextPart,
-    UserMessage,
 )
 from modelmeld.api.subscription_passthrough import (
     PassthroughVendor,
@@ -53,11 +52,10 @@ from modelmeld.hooks import (
 )
 from modelmeld.memory import (
     ANONYMOUS_TENANT_ID,
+    MemoryContext,
     MemoryHeaderError,
     MemoryIdentity,
-    MemoryStore,
-    Role,
-    assemble_context,
+    MemoryProvider,
     extract_memory_identity,
     inject_into_request,
 )
@@ -79,7 +77,7 @@ async def chat_completions(
     rt: Router = fastapi_request.app.state.router
     scrubber: Scrubber | None = fastapi_request.app.state.scrubber
     hooks: HookRegistry = fastapi_request.app.state.hooks
-    memory: MemoryStore | None = getattr(fastapi_request.app.state, "memory_store", None)
+    provider: MemoryProvider | None = getattr(fastapi_request.app.state, "memory_provider", None)
     token_counter: TokenCounter | None = getattr(fastapi_request.app.state, "token_counter", None)
     completion_cache: CompletionCache | None = getattr(
         fastapi_request.app.state, "completion_cache", None,
@@ -191,7 +189,10 @@ async def chat_completions(
 
     # Memory injection. Prepend L1+L2 (and L3 in FULL mode)
     # BEFORE scrub so injected content is also scrubbed on egress.
-    mem_context = await assemble_context(memory, mem_identity)
+    mem_context = (
+        await provider.retrieve(mem_identity, request)
+        if provider is not None else MemoryContext()
+    )
     request = inject_into_request(request, mem_context)
     outgoing, redactions = _maybe_scrub(request, decision, scrubber)
     # Note: model override is applied inside the failover helpers per-attempt so
@@ -205,7 +206,7 @@ async def chat_completions(
         cache_status = "bypass" if completion_cache is not None else None
         return await _stream_with_failover(
             rt, decision, outgoing, redactions, hooks, request_id, started,
-            identity, memory, mem_identity, token_counter,
+            identity, provider, mem_identity, token_counter,
             cache_status=cache_status,
             hints=hints,
             model_registry=getattr(fastapi_request.app.state, "model_registry", None),
@@ -275,7 +276,7 @@ async def chat_completions(
 
     return await _completion_with_failover(
         rt, decision, outgoing, redactions, hooks, request_id, started, response,
-        identity, memory, mem_identity, token_counter,
+        identity, provider, mem_identity, token_counter,
         completion_cache=completion_cache, cache_key=cache_key, cache_ttl=cache_ttl,
         semantic_cache=semantic_cache, served_model=served_model,
         hints=hints,
@@ -414,7 +415,7 @@ async def _completion_with_failover(
     started: float,
     response: Response,
     identity: dict[str, str | None] | None,
-    memory: MemoryStore | None,
+    provider: MemoryProvider | None,
     mem_identity: MemoryIdentity,
     token_counter: TokenCounter | None,
     *,
@@ -485,7 +486,7 @@ async def _completion_with_failover(
         hooks, request_id, started, request, decision, redactions, failover_from,
         completion, identity, cache_status=miss_status,
     )
-    await _write_memory_turns(memory, mem_identity, request, completion, decision, token_counter)
+    await _write_memory_turns(provider, mem_identity, request, completion, decision, token_counter)
     return completion
 
 
@@ -502,7 +503,7 @@ async def _stream_with_failover(
     request_id: str,
     started: float,
     identity: dict[str, str | None] | None,
-    memory: MemoryStore | None,
+    provider: MemoryProvider | None,
     mem_identity: MemoryIdentity,
     token_counter: TokenCounter | None,
     *,
@@ -547,7 +548,7 @@ async def _stream_with_failover(
         _sse_stream(
             primary_aiter, first_chunk, hooks, request_id, started,
             request, decision, redactions, failover_from, identity,
-            memory, mem_identity, token_counter,
+            provider, mem_identity, token_counter,
         ),
         media_type="text/event-stream",
         headers=headers,
@@ -588,7 +589,7 @@ async def _sse_stream(
     redactions: list[Redaction],
     failover_from: str | None,
     identity: dict[str, str | None] | None,
-    memory: MemoryStore | None,
+    provider: MemoryProvider | None,
     mem_identity: MemoryIdentity,
     token_counter: TokenCounter | None,
 ) -> AsyncIterator[str]:
@@ -620,7 +621,7 @@ async def _sse_stream(
             output_tokens, last_usage, identity,
         )
         await _write_memory_turns_streaming(
-            memory, mem_identity, request, "".join(accumulated_text),
+            provider, mem_identity, request, "".join(accumulated_text),
             output_tokens, decision, token_counter,
         )
     else:
@@ -653,33 +654,31 @@ def _chunk_text_pieces(chunk: ChatCompletionChunk) -> list[str]:
 # ---------------------------------------------------------------------------
 
 async def _write_memory_turns(
-    memory: MemoryStore | None,
+    provider: MemoryProvider | None,
     mem_identity: MemoryIdentity,
     request: ChatCompletionRequest,
     completion: ChatCompletion,
     decision: RoutingDecision,
     token_counter: TokenCounter | None,
 ) -> None:
-    """Append the user prompt + assistant response to L0. Best-effort.
+    """Record the user prompt + assistant response. Best-effort.
 
-    Memory failures NEVER break the request. The user already got their answer;
-    losing a turn write is recoverable from L0 elsewhere (eventually) but a
-    500 isn't.
+    Memory failures NEVER break the request — the provider swallows + logs them.
+    This helper only does the route-shaped extraction (pull assistant text +
+    token count out of the completion) before handing off to the provider.
     """
-    if memory is None or not mem_identity.active:
+    if provider is None or not mem_identity.active:
         return
-    assert mem_identity.session_id is not None  # narrow for type checker
     model_used = decision.model_id_override or request.model
     assistant_text = _extract_completion_text(completion)
     if completion.usage and completion.usage.completion_tokens:
         assistant_tokens = completion.usage.completion_tokens
     else:
         assistant_tokens = _count_tokens(token_counter, assistant_text, model_used)
-    await _append_request_response_turns(
-        memory=memory,
-        mem_identity=mem_identity,
-        request=request,
-        assistant_text=assistant_text,
+    await provider.record(
+        mem_identity,
+        request,
+        assistant_text,
         assistant_tokens=assistant_tokens,
         model_used=model_used,
         token_counter=token_counter,
@@ -687,7 +686,7 @@ async def _write_memory_turns(
 
 
 async def _write_memory_turns_streaming(
-    memory: MemoryStore | None,
+    provider: MemoryProvider | None,
     mem_identity: MemoryIdentity,
     request: ChatCompletionRequest,
     assistant_text: str,
@@ -695,82 +694,21 @@ async def _write_memory_turns_streaming(
     decision: RoutingDecision,
     token_counter: TokenCounter | None,
 ) -> None:
-    if memory is None or not mem_identity.active:
+    if provider is None or not mem_identity.active:
         return
     model_used = decision.model_id_override or request.model
     # Streaming accumulator gave us a char-based count; if we have a real
     # counter, recount the full reassembled text now that the stream is done.
     if token_counter is not None and assistant_text:
         assistant_tokens = token_counter.count_text(assistant_text, model_used)
-    await _append_request_response_turns(
-        memory=memory,
-        mem_identity=mem_identity,
-        request=request,
-        assistant_text=assistant_text,
+    await provider.record(
+        mem_identity,
+        request,
+        assistant_text,
         assistant_tokens=assistant_tokens,
         model_used=model_used,
         token_counter=token_counter,
     )
-
-
-async def _append_request_response_turns(
-    memory: MemoryStore,
-    mem_identity: MemoryIdentity,
-    request: ChatCompletionRequest,
-    assistant_text: str,
-    assistant_tokens: int,
-    model_used: str,
-    token_counter: TokenCounter | None,
-) -> None:
-    """Shared write path for both streaming + non-streaming success."""
-    try:
-        await memory.get_or_create_session(
-            session_id=mem_identity.session_id,  # type: ignore[arg-type]
-            tenant_id=mem_identity.tenant_id,
-            user_id=mem_identity.user_id,
-        )
-        # Append the last user turn from the incoming request (the prompt the
-        # user just sent). We only log the newest user message — prior turns
-        # came from earlier requests and are already in L0.
-        last_user = _last_user_turn(request, token_counter, model_used)
-        if last_user is not None:
-            user_text, user_tokens = last_user
-            await memory.append_turn(
-                session_id=mem_identity.session_id,  # type: ignore[arg-type]
-                tenant_id=mem_identity.tenant_id,
-                role=Role.USER,
-                content=user_text,
-                token_count=user_tokens,
-                model_used=model_used,
-            )
-        await memory.append_turn(
-            session_id=mem_identity.session_id,  # type: ignore[arg-type]
-            tenant_id=mem_identity.tenant_id,
-            role=Role.ASSISTANT,
-            content=assistant_text,
-            token_count=assistant_tokens,
-            model_used=model_used,
-        )
-    except Exception:
-        logger.exception("memory write failed for session %s", mem_identity.session_id)
-
-
-def _last_user_turn(
-    request: ChatCompletionRequest,
-    token_counter: TokenCounter | None,
-    model_used: str,
-) -> tuple[str, int] | None:
-    """Find the most recent user message in the request + return (text, tokens)."""
-    for msg in reversed(request.messages):
-        if isinstance(msg, UserMessage):
-            if isinstance(msg.content, str):
-                text = msg.content
-            else:
-                text = "".join(
-                    part.text for part in msg.content if isinstance(part, TextPart)
-                )
-            return text, _count_tokens(token_counter, text, model_used)
-    return None
 
 
 def _count_tokens(

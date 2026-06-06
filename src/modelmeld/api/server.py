@@ -15,7 +15,13 @@ from modelmeld.adapters import ProviderAdapter
 from modelmeld.cache import CompletionCache, SemanticCompletionCache
 from modelmeld.config import GatewaySettings
 from modelmeld.hooks import HookRegistry
-from modelmeld.memory import InMemoryMemoryStore, MemoryStore, PostgresMemoryStore
+from modelmeld.memory import (
+    InMemoryMemoryStore,
+    MemoryProvider,
+    MemoryStore,
+    PostgresMemoryStore,
+    TieredMemoryProvider,
+)
 from modelmeld.privacy import Scrubber, build_scrubber
 from modelmeld.router import Router, SingleAdapterRouter, build_router
 from modelmeld.scout import ModelRegistry, Scout, build_scout, default_registry
@@ -30,9 +36,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         router: Router | None = getattr(app.state, "router", None)
         if router is not None:
             await router.close()
-        memory: MemoryStore | None = getattr(app.state, "memory_store", None)
-        if memory is not None:
-            await memory.close()
+        # Closing the provider releases its underlying store (the provider
+        # wraps app.state.memory_store), so we don't close the store twice.
+        provider: MemoryProvider | None = getattr(app.state, "memory_provider", None)
+        if provider is not None:
+            await provider.close()
         cache: CompletionCache | None = getattr(app.state, "completion_cache", None)
         if cache is not None:
             await cache.close()
@@ -87,6 +95,10 @@ def build_app(
         )
     else:
         app.state.memory_store = InMemoryMemoryStore()
+    # The routes talk to a MemoryProvider, not the store directly. The default
+    # provider wraps the tiered store above; alternative engines (e.g. Mem0)
+    # are selected here in a later sprint via settings.memory_backend.
+    app.state.memory_provider = TieredMemoryProvider(app.state.memory_store)
     # Token counter. Default char-based; settings can switch to
     # litellm. Pass `token_counter=` to inject a custom impl in tests.
     app.state.token_counter = (

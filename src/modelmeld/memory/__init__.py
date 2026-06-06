@@ -58,6 +58,10 @@ from modelmeld.memory.postgres import (
     MissingPostgresDependencyError,
     PostgresMemoryStore,
 )
+from modelmeld.memory.provider import (
+    MemoryProvider,
+    TieredMemoryProvider,
+)
 from modelmeld.memory.summarizer import (
     SummarizeCallable,
     SummarizerConfig,
@@ -88,6 +92,7 @@ __all__ = [
     "MemoryHeaderError",
     "MemoryIdentity",
     "MemoryMode",
+    "MemoryProvider",
     "MemoryStore",
     "MissingPostgresDependencyError",
     "PostgresMemoryStore",
@@ -99,6 +104,7 @@ __all__ = [
     "Summary",
     "SummaryVersionMismatch",
     "TenantMismatchError",
+    "TieredMemoryProvider",
     "Turn",
     "adapter_summarize_call",
     "assemble_context",
