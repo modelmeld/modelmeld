@@ -129,13 +129,21 @@ def build_app(
         )
 
     from modelmeld.api.body_size_limit import BodySizeLimitMiddleware
-    from modelmeld.api.routes import chat, healthz, messages, models, version
+    from modelmeld.api.routes import (
+        chat,
+        healthz,
+        messages,
+        models,
+        responses,
+        version,
+    )
 
     app.include_router(healthz.router)
     app.include_router(version.router)
     app.include_router(models.router, prefix="/v1")
     app.include_router(chat.router, prefix="/v1")
     app.include_router(messages.router, prefix="/v1")
+    app.include_router(responses.router, prefix="/v1")
 
     # Body-size cap (defense against OOM/DoS from oversized payloads). Chat
     # and messages routes may carry large prompts so the default sits at 4 MB;
