@@ -86,6 +86,13 @@ class Mem0MemoryProvider(MemoryProvider):
         except ImportError as e:
             raise Mem0DependencyError() from e
 
+        logger.warning(
+            "Mem0 memory backend is EXPERIMENTAL. infer=%s means an LLM "
+            "extraction call per write — route it through this gateway via "
+            "mem0_base_url so it's cost-optimized. See docs/integrations/memory.md.",
+            infer,
+        )
+
         self._infer = infer
         self._top_k = top_k
         self._rerank = rerank

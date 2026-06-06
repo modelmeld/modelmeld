@@ -57,3 +57,12 @@ declared role:
 - [CrewAI](crewai.md)
 - [LangGraph](langgraph.md)
 - [OpenClaw](openclaw.md)
+
+## Gateway-managed memory (experimental)
+
+For agents/workflows that call the API directly and want the gateway to
+remember the conversation — no SDK, just a session-id header:
+
+- [**Conversation memory at the gateway**](memory.md) — opt-in mem0-backed
+  memory via `MODELMELD_MEMORY_BACKEND=mem0`. (Coding tools manage their own
+  history and don't need this.)
