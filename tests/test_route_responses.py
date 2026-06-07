@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2026 ModelMeld.
 
-"""End-to-end /v1/responses (Phase 1, non-streaming)."""
+"""End-to-end /v1/responses (non-streaming, streaming text, streaming tools)."""
 
 from __future__ import annotations
 
@@ -19,9 +19,11 @@ from modelmeld.api.schemas import (
     ChoiceDelta,
     ChunkChoice,
     FunctionCall,
+    FunctionCallDelta,
     ResponseMessage,
     SystemMessage,
     ToolCall,
+    ToolCallDelta,
     Usage,
     UserMessage,
 )
@@ -172,3 +174,59 @@ async def test_streaming_emits_responses_sse_lifecycle() -> None:
     text = "".join(e["delta"] for e in events if e["type"] == "response.output_text.delta")
     assert text == "Hello world"
     assert events[-1]["response"]["status"] == "completed"
+
+
+class _ToolStreamAdapter(ProviderAdapter):
+    """Streams a single tool call: open + argument fragments + finish."""
+
+    name = "stub-tool-stream"
+    is_egress = False
+
+    async def chat(self, request: ChatCompletionRequest) -> ChatCompletion:
+        raise NotImplementedError("streaming-only fixture")
+
+    async def stream_chat(
+        self, request: ChatCompletionRequest,
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        yield ChatCompletionChunk(
+            id="c", created=0, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(tool_calls=[
+                ToolCallDelta(index=0, id="call_1", type="function",
+                              function=FunctionCallDelta(name="get_weather", arguments="")),
+            ]))],
+        )
+        yield ChatCompletionChunk(
+            id="c", created=0, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(tool_calls=[
+                ToolCallDelta(index=0, function=FunctionCallDelta(arguments='{"city":"SF"}')),
+            ]))],
+        )
+        yield ChatCompletionChunk(
+            id="c", created=0, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(), finish_reason="tool_calls")],
+        )
+
+    async def health(self) -> bool:
+        return True
+
+
+async def test_streaming_tool_call_emits_function_call_events() -> None:
+    app = build_app(adapter=_ToolStreamAdapter())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post(
+            "/v1/responses",
+            json={"model": "anthropic/modelmeld-auto", "input": "weather in SF?", "stream": True},
+        )
+
+    assert resp.status_code == 200
+    events = _parse_responses_sse(resp.text)
+    types = [e["type"] for e in events]
+    assert "response.function_call_arguments.delta" in types
+    assert "response.function_call_arguments.done" in types
+    completed = next(e for e in events if e["type"] == "response.completed")
+    fc = next(o for o in completed["response"]["output"] if o["type"] == "function_call")
+    assert fc["name"] == "get_weather"
+    assert fc["arguments"] == '{"city":"SF"}'
+    assert fc["call_id"] == "call_1"

@@ -3,38 +3,35 @@
 
 """Internal Chat chunk stream → OpenAI Responses API SSE events.
 
-The Responses streaming protocol is a lifecycle of typed events, each with a
-monotonic `sequence_number`:
+The Responses stream is a lifecycle of typed events with a monotonic
+`sequence_number`. Output is an ordered set of items — a `message` item for
+assistant text, and one `function_call` item per tool call — each opened lazily
+at its own `output_index` as it first appears in the chunk stream:
 
     response.created
-    response.output_item.added        (the assistant message item)
-    response.content_part.added       (an output_text part)
-    response.output_text.delta × N    (the text, chunk by chunk)
-    response.output_text.done
-    response.content_part.done
-    response.output_item.done
-    response.completed                (terminal; carries usage)
+    (text)  output_item.added(message) → content_part.added
+            → output_text.delta × N
+    (tool)  output_item.added(function_call)
+            → function_call_arguments.delta × N
+    (close, in output_index order)
+            text:  output_text.done → content_part.done → output_item.done
+            tool:  function_call_arguments.done → output_item.done
+    response.completed   (terminal; carries the full output + usage)
 
-Phase 2a handles text. Tool-call streaming (function_call items +
-response.function_call_arguments.delta/done) is a 2b follow-up; the
-non-streaming path already covers tool calls.
-
-Events are emitted as plain dicts shaped to the wire format. They are validated
-against the OpenAI SDK's own event models in the tests, so "matches the SDK" ==
-"matches what Codex parses."
+Events are emitted as dicts shaped to the wire format and validated against the
+OpenAI SDK's own event models in the tests, so "matches the SDK" == "matches
+what Codex parses."
 """
 
 from __future__ import annotations
 
 import json
 import time
-from collections.abc import Iterable
 from typing import Any
 from uuid import uuid4
 
 from modelmeld.api.schemas import ChatCompletionChunk
 
-_OUTPUT_INDEX = 0
 _CONTENT_INDEX = 0
 
 
@@ -49,12 +46,22 @@ class ResponsesStreamTranslator:
     def __init__(self, model: str, *, response_id: str | None = None) -> None:
         self.model = model
         self.response_id = response_id or f"resp_{uuid4().hex[:24]}"
-        self.item_id = f"msg_{uuid4().hex[:24]}"
         self._created_at = int(time.time())
         self._seq = 0
-        self._started = False
+        self._created_emitted = False
         self._finished = False
+        self._next_output_index = 0
+
+        # Text (message) item — opened lazily on the first text delta.
+        self._text_open = False
+        self._text_index = 0
+        self._text_item_id = ""
         self._text_parts: list[str] = []
+
+        # Tool (function_call) items, keyed by the OpenAI tool_call index.
+        # value: {output_index, item_id, call_id, name, args: list[str]}
+        self._tools: dict[int, dict[str, Any]] = {}
+
         self._input_tokens = 0
         self._output_tokens = 0
 
@@ -62,21 +69,33 @@ class ResponsesStreamTranslator:
 
     def translate_chunk(self, chunk: ChatCompletionChunk) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
-        if not self._started:
-            events.extend(self._start_events())
+        if not self._created_emitted:
+            self._created_emitted = True
+            events.append({
+                "type": "response.created",
+                "sequence_number": self._next_seq(),
+                "response": self._response_obj("in_progress", []),
+            })
+
         if chunk.choices:
             delta = chunk.choices[0].delta
             if delta.content:
+                if not self._text_open:
+                    events.extend(self._open_text())
                 self._text_parts.append(delta.content)
                 events.append({
                     "type": "response.output_text.delta",
                     "sequence_number": self._next_seq(),
-                    "item_id": self.item_id,
-                    "output_index": _OUTPUT_INDEX,
+                    "item_id": self._text_item_id,
+                    "output_index": self._text_index,
                     "content_index": _CONTENT_INDEX,
                     "delta": delta.content,
                     "logprobs": [],
                 })
+            if delta.tool_calls:
+                for tcd in delta.tool_calls:
+                    events.extend(self._handle_tool_delta(tcd))
+
         if chunk.usage is not None:
             self._output_tokens = chunk.usage.completion_tokens
             self._input_tokens = chunk.usage.prompt_tokens
@@ -88,33 +107,66 @@ class ResponsesStreamTranslator:
             return []
         self._finished = True
         events: list[dict[str, Any]] = []
-        if not self._started:
-            events.extend(self._start_events())
+        if not self._created_emitted:
+            self._created_emitted = True
+            events.append({
+                "type": "response.created",
+                "sequence_number": self._next_seq(),
+                "response": self._response_obj("in_progress", []),
+            })
 
-        full_text = "".join(self._text_parts)
-        part = {"type": "output_text", "text": full_text, "annotations": []}
-        events.append({
-            "type": "response.output_text.done",
-            "sequence_number": self._next_seq(),
-            "item_id": self.item_id, "output_index": _OUTPUT_INDEX,
-            "content_index": _CONTENT_INDEX, "text": full_text, "logprobs": [],
-        })
-        events.append({
-            "type": "response.content_part.done",
-            "sequence_number": self._next_seq(),
-            "item_id": self.item_id, "output_index": _OUTPUT_INDEX,
-            "content_index": _CONTENT_INDEX, "part": part,
-        })
-        done_item = self._message_item("completed", [part])
-        events.append({
-            "type": "response.output_item.done",
-            "sequence_number": self._next_seq(),
-            "output_index": _OUTPUT_INDEX, "item": done_item,
-        })
+        # Responses guarantees ≥1 output item; if the model produced neither
+        # text nor tool calls, emit an empty message.
+        if not self._text_open and not self._tools:
+            events.extend(self._open_text())
+
+        # Indexed list of completed items for the terminal response object.
+        completed_items: list[tuple[int, dict[str, Any]]] = []
+
+        if self._text_open:
+            full_text = "".join(self._text_parts)
+            part = {"type": "output_text", "text": full_text, "annotations": []}
+            events.append({
+                "type": "response.output_text.done",
+                "sequence_number": self._next_seq(),
+                "item_id": self._text_item_id, "output_index": self._text_index,
+                "content_index": _CONTENT_INDEX, "text": full_text, "logprobs": [],
+            })
+            events.append({
+                "type": "response.content_part.done",
+                "sequence_number": self._next_seq(),
+                "item_id": self._text_item_id, "output_index": self._text_index,
+                "content_index": _CONTENT_INDEX, "part": part,
+            })
+            done_item = self._message_item("completed", self._text_item_id, [part])
+            events.append({
+                "type": "response.output_item.done",
+                "sequence_number": self._next_seq(),
+                "output_index": self._text_index, "item": done_item,
+            })
+            completed_items.append((self._text_index, done_item))
+
+        for tool in sorted(self._tools.values(), key=lambda t: t["index"]):
+            full_args = "".join(tool["args"])
+            events.append({
+                "type": "response.function_call_arguments.done",
+                "sequence_number": self._next_seq(),
+                "item_id": tool["item_id"], "output_index": tool["index"],
+                "name": tool["name"], "arguments": full_args,
+            })
+            fc_item = self._function_call_item(tool, full_args)
+            events.append({
+                "type": "response.output_item.done",
+                "sequence_number": self._next_seq(),
+                "output_index": tool["index"], "item": fc_item,
+            })
+            completed_items.append((tool["index"], fc_item))
+
+        output = [item for _, item in sorted(completed_items, key=lambda x: x[0])]
         events.append({
             "type": "response.completed",
             "sequence_number": self._next_seq(),
-            "response": self._response_obj("completed", [done_item], self._usage()),
+            "response": self._response_obj("completed", output, self._usage()),
         })
         return events
 
@@ -125,31 +177,73 @@ class ResponsesStreamTranslator:
         self._seq += 1
         return n
 
-    def _start_events(self) -> Iterable[dict[str, Any]]:
-        self._started = True
-        yield {
-            "type": "response.created",
-            "sequence_number": self._next_seq(),
-            "response": self._response_obj("in_progress", []),
-        }
-        yield {
-            "type": "response.output_item.added",
-            "sequence_number": self._next_seq(),
-            "output_index": _OUTPUT_INDEX,
-            "item": self._message_item("in_progress", []),
-        }
-        yield {
-            "type": "response.content_part.added",
-            "sequence_number": self._next_seq(),
-            "item_id": self.item_id, "output_index": _OUTPUT_INDEX,
-            "content_index": _CONTENT_INDEX,
-            "part": {"type": "output_text", "text": "", "annotations": []},
+    def _open_text(self) -> list[dict[str, Any]]:
+        self._text_open = True
+        self._text_index = self._next_output_index
+        self._next_output_index += 1
+        self._text_item_id = f"msg_{uuid4().hex[:24]}"
+        return [
+            {
+                "type": "response.output_item.added",
+                "sequence_number": self._next_seq(),
+                "output_index": self._text_index,
+                "item": self._message_item("in_progress", self._text_item_id, []),
+            },
+            {
+                "type": "response.content_part.added",
+                "sequence_number": self._next_seq(),
+                "item_id": self._text_item_id, "output_index": self._text_index,
+                "content_index": _CONTENT_INDEX,
+                "part": {"type": "output_text", "text": "", "annotations": []},
+            },
+        ]
+
+    def _handle_tool_delta(self, tcd: Any) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        idx = tcd.index
+        fn = getattr(tcd, "function", None)
+        if idx not in self._tools:
+            output_index = self._next_output_index
+            self._next_output_index += 1
+            item_id = f"fc_{uuid4().hex[:24]}"
+            tool = {
+                "output_index": output_index, "index": output_index,
+                "item_id": item_id,
+                "call_id": tcd.id or f"call_{uuid4().hex[:24]}",
+                "name": (fn.name if fn and fn.name else ""),
+                "args": [],
+            }
+            self._tools[idx] = tool
+            events.append({
+                "type": "response.output_item.added",
+                "sequence_number": self._next_seq(),
+                "output_index": output_index,
+                "item": self._function_call_item(tool, ""),
+            })
+        tool = self._tools[idx]
+        if fn and fn.name and not tool["name"]:
+            tool["name"] = fn.name
+        if fn and fn.arguments:
+            tool["args"].append(fn.arguments)
+            events.append({
+                "type": "response.function_call_arguments.delta",
+                "sequence_number": self._next_seq(),
+                "item_id": tool["item_id"], "output_index": tool["index"],
+                "delta": fn.arguments,
+            })
+        return events
+
+    def _message_item(self, status: str, item_id: str, content: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "type": "message", "id": item_id, "status": status,
+            "role": "assistant", "content": content,
         }
 
-    def _message_item(self, status: str, content: list[dict[str, Any]]) -> dict[str, Any]:
+    def _function_call_item(self, tool: dict[str, Any], arguments: str) -> dict[str, Any]:
         return {
-            "type": "message", "id": self.item_id, "status": status,
-            "role": "assistant", "content": content,
+            "type": "function_call", "id": tool["item_id"],
+            "call_id": tool["call_id"], "name": tool["name"],
+            "arguments": arguments, "status": "completed",
         }
 
     def _usage(self) -> dict[str, Any]:
@@ -164,14 +258,12 @@ class ResponsesStreamTranslator:
     def _response_obj(
         self, status: str, output: list[dict[str, Any]], usage: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        obj: dict[str, Any] = {
+        return {
             "id": self.response_id, "object": "response",
             "created_at": self._created_at, "model": self.model,
             "status": status, "output": output,
             "error": None, "incomplete_details": None, "instructions": None,
             "metadata": {}, "parallel_tool_calls": True,
             "temperature": None, "top_p": None,
-            "tool_choice": "auto", "tools": [],
+            "tool_choice": "auto", "tools": [], "usage": usage,
         }
-        obj["usage"] = usage
-        return obj
