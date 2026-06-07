@@ -87,11 +87,12 @@ logged.
 
 ## Works with
 
-Drop-in for any tool that speaks OpenAI Chat Completions or Anthropic
-Messages.
+Drop-in for any tool that speaks OpenAI Chat Completions, OpenAI Responses,
+or Anthropic Messages.
 
 **Validated end-to-end:**
 [Claude Code](docs/integrations/claude-code.md) ·
+[Codex CLI](docs/integrations/codex-cli.md) ·
 [opencode](docs/integrations/opencode.md) ·
 [Aider](docs/integrations/aider.md) ·
 [AutoGen](docs/integrations/autogen.md) ·
@@ -103,8 +104,7 @@ OpenAI SDK · `anthropic-sdk-python` · `@anthropic-ai/sdk`
 **Should work, not yet live-tested:**
 [Cursor](docs/integrations/cursor.md) ·
 [Cline](docs/integrations/cline.md) ·
-[Continue](docs/integrations/continue.md) ·
-Codex CLI
+[Continue](docs/integrations/continue.md)
 
 Frameworks can declare task category + agent role explicitly via
 `x-modelmeld-task-category` / `x-modelmeld-agent-role` headers — bypasses
@@ -115,10 +115,6 @@ request represents. See [routing hints](docs/routing-hints.md).
 
 Honest non-coverage list for the v1 OSS API surface:
 
-- **OpenAI Responses API** (`/v1/responses`) — on the roadmap, not v1.
-  Current Codex CLI still uses `/v1/chat/completions` and works
-  through ModelMeld today; the newer Responses surface is the path
-  for clients adopting OpenAI's stateful agent loop.
 - **Anthropic image content blocks** (vision input) — deferred. Claude
   Code doesn't use vision; documented as a known gap rather than
   silently failing.
