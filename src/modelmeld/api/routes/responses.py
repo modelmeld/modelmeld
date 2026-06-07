@@ -185,6 +185,21 @@ async def responses(
 # Streaming (Responses SSE)
 # ---------------------------------------------------------------------------
 
+def _estimate_input_tokens(
+    request, served_model: str, token_counter: TokenCounter | None,
+) -> int:
+    """Best-effort prompt-token count for streamed responses whose upstream
+    omitted usage. Uses the configured counter; falls back to ≈4 chars/token."""
+    messages = getattr(request, "messages", None) or []
+    if token_counter is not None:
+        return token_counter.count_messages(messages, served_model)
+    chars = 0
+    for m in messages:
+        content = getattr(m, "content", None)
+        if isinstance(content, str):
+            chars += len(content)
+    return max(1, chars // 4) if chars else 0
+
 async def _stream_responses_with_failover(
     rt: Router,
     decision,
@@ -290,7 +305,10 @@ async def _sse_responses(
 
     if error is None:
         # Responses SSE has no [DONE] terminator; response.completed ends it.
-        for event in translator.finalize():
+        # Supply an input-token estimate for the case where the upstream stream
+        # never reported usage (translator ignores it if real usage arrived).
+        input_estimate = _estimate_input_tokens(request, served_model, token_counter)
+        for event in translator.finalize(input_tokens=input_estimate):
             yield format_responses_sse(event)
         await _fire_success_stream(
             hooks, request_id, started, request, decision, redactions, failover_from,

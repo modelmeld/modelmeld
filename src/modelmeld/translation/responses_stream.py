@@ -62,8 +62,14 @@ class ResponsesStreamTranslator:
         # value: {output_index, item_id, call_id, name, args: list[str]}
         self._tools: dict[int, dict[str, Any]] = {}
 
+        # Usage. OSS providers usually omit usage from stream chunks, so we
+        # track whether any real usage arrived; if none did, finalize() falls
+        # back to a char-based estimate (output accumulated here across both
+        # text and tool-call argument deltas; input supplied by the caller).
         self._input_tokens = 0
         self._output_tokens = 0
+        self._saw_usage = False
+        self._output_chars = 0
 
     # -- public API --------------------------------------------------------
 
@@ -83,6 +89,7 @@ class ResponsesStreamTranslator:
                 if not self._text_open:
                     events.extend(self._open_text())
                 self._text_parts.append(delta.content)
+                self._output_chars += len(delta.content)
                 events.append({
                     "type": "response.output_text.delta",
                     "sequence_number": self._next_seq(),
@@ -97,15 +104,26 @@ class ResponsesStreamTranslator:
                     events.extend(self._handle_tool_delta(tcd))
 
         if chunk.usage is not None:
+            self._saw_usage = True
             self._output_tokens = chunk.usage.completion_tokens
             self._input_tokens = chunk.usage.prompt_tokens
         return events
 
-    def finalize(self) -> list[dict[str, Any]]:
-        """Closing events. Idempotent — second call returns []."""
+    def finalize(self, *, input_tokens: int = 0) -> list[dict[str, Any]]:
+        """Closing events. Idempotent — second call returns [].
+
+        `input_tokens` is a caller-supplied estimate used only when the upstream
+        stream never reported real usage; output tokens are then estimated from
+        the accumulated text + tool-argument characters (≈4 chars/token).
+        """
         if self._finished:
             return []
         self._finished = True
+        if not self._saw_usage:
+            self._input_tokens = input_tokens
+            self._output_tokens = (
+                max(1, self._output_chars // 4) if self._output_chars else 0
+            )
         events: list[dict[str, Any]] = []
         if not self._created_emitted:
             self._created_emitted = True
@@ -225,6 +243,7 @@ class ResponsesStreamTranslator:
             tool["name"] = fn.name
         if fn and fn.arguments:
             tool["args"].append(fn.arguments)
+            self._output_chars += len(fn.arguments)
             events.append({
                 "type": "response.function_call_arguments.delta",
                 "sequence_number": self._next_seq(),
