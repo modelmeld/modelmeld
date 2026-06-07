@@ -15,13 +15,22 @@ from openai.types.responses import (
     ResponseContentPartAddedEvent,
     ResponseContentPartDoneEvent,
     ResponseCreatedEvent,
+    ResponseFunctionCallArgumentsDeltaEvent,
+    ResponseFunctionCallArgumentsDoneEvent,
     ResponseOutputItemAddedEvent,
     ResponseOutputItemDoneEvent,
     ResponseTextDeltaEvent,
     ResponseTextDoneEvent,
 )
 
-from modelmeld.api.schemas import ChatCompletionChunk, ChoiceDelta, ChunkChoice, Usage
+from modelmeld.api.schemas import (
+    ChatCompletionChunk,
+    ChoiceDelta,
+    ChunkChoice,
+    FunctionCallDelta,
+    ToolCallDelta,
+    Usage,
+)
 from modelmeld.translation.responses_stream import (
     ResponsesStreamTranslator,
     format_responses_sse,
@@ -35,8 +44,29 @@ _SDK_EVENT = {
     "response.output_text.done": ResponseTextDoneEvent,
     "response.content_part.done": ResponseContentPartDoneEvent,
     "response.output_item.done": ResponseOutputItemDoneEvent,
+    "response.function_call_arguments.delta": ResponseFunctionCallArgumentsDeltaEvent,
+    "response.function_call_arguments.done": ResponseFunctionCallArgumentsDoneEvent,
     "response.completed": ResponseCompletedEvent,
 }
+
+
+def _tool_open(idx: int, call_id: str, name: str) -> ChatCompletionChunk:
+    return ChatCompletionChunk(
+        id="c", created=0, model="qwen",
+        choices=[ChunkChoice(index=0, delta=ChoiceDelta(tool_calls=[
+            ToolCallDelta(index=idx, id=call_id, type="function",
+                          function=FunctionCallDelta(name=name, arguments="")),
+        ]))],
+    )
+
+
+def _tool_args(idx: int, frag: str) -> ChatCompletionChunk:
+    return ChatCompletionChunk(
+        id="c", created=0, model="qwen",
+        choices=[ChunkChoice(index=0, delta=ChoiceDelta(tool_calls=[
+            ToolCallDelta(index=idx, function=FunctionCallDelta(arguments=frag)),
+        ]))],
+    )
 
 
 def _chunk(content: str | None = None, *, usage: Usage | None = None) -> ChatCompletionChunk:
@@ -107,3 +137,67 @@ def test_sse_frame_format() -> None:
     frame = format_responses_sse({"type": "response.completed", "sequence_number": 0})
     assert frame.startswith("event: response.completed\ndata: ")
     assert frame.endswith("\n\n")
+
+
+# ---------------------------------------------------------------------------
+# Tool-call streaming (2b)
+# ---------------------------------------------------------------------------
+
+def _validate_all(events: list[dict]) -> None:
+    for event in events:
+        _SDK_EVENT[event["type"]].model_validate(event)
+
+
+def test_tool_call_streaming_lifecycle_and_sdk_shapes() -> None:
+    t = ResponsesStreamTranslator(model="qwen3-coder-next")
+    events: list[dict] = []
+    events += t.translate_chunk(_tool_open(0, "call_1", "get_weather"))
+    events += t.translate_chunk(_tool_args(0, '{"city":'))
+    events += t.translate_chunk(_tool_args(0, '"SF"}'))
+    events += t.finalize()
+
+    types = [e["type"] for e in events]
+    assert types[0] == "response.created"
+    assert "response.output_item.added" in types          # function_call item opened
+    assert types.count("response.function_call_arguments.delta") == 2
+    assert "response.function_call_arguments.done" in types
+    assert types[-1] == "response.completed"
+    _validate_all(events)
+
+    fc = next(o for o in events[-1]["response"]["output"] if o["type"] == "function_call")
+    assert fc["name"] == "get_weather"
+    assert fc["arguments"] == '{"city":"SF"}'
+    assert fc["call_id"] == "call_1"
+
+
+def test_mixed_text_then_tool_call_indices() -> None:
+    t = ResponsesStreamTranslator(model="m")
+    events: list[dict] = []
+    events += t.translate_chunk(_chunk("Let me check. "))
+    events += t.translate_chunk(_tool_open(0, "call_9", "search"))
+    events += t.translate_chunk(_tool_args(0, '{"q":"x"}'))
+    events += t.finalize()
+
+    _validate_all(events)
+    output = events[-1]["response"]["output"]
+    # Message item at index 0, function_call at index 1 (order of appearance).
+    assert output[0]["type"] == "message"
+    assert output[0]["content"][0]["text"] == "Let me check. "
+    assert output[1]["type"] == "function_call"
+    assert output[1]["name"] == "search"
+    assert output[1]["arguments"] == '{"q":"x"}'
+
+
+def test_two_parallel_tool_calls_get_distinct_items() -> None:
+    t = ResponsesStreamTranslator(model="m")
+    events: list[dict] = []
+    events += t.translate_chunk(_tool_open(0, "call_a", "alpha"))
+    events += t.translate_chunk(_tool_open(1, "call_b", "beta"))
+    events += t.translate_chunk(_tool_args(0, "{}"))
+    events += t.translate_chunk(_tool_args(1, "{}"))
+    events += t.finalize()
+
+    _validate_all(events)
+    fcs = [o for o in events[-1]["response"]["output"] if o["type"] == "function_call"]
+    assert [f["name"] for f in fcs] == ["alpha", "beta"]
+    assert len({f["call_id"] for f in fcs}) == 2

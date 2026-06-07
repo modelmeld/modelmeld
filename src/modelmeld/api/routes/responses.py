@@ -10,9 +10,9 @@ through `_completion_with_failover`; streaming emits Responses SSE events via
 `ResponsesStreamTranslator`. Audit headers, hooks, and memory write-back are
 shared with the chat route.
 
-Streaming covers text (Phase 2a). Tool-call streaming (function_call items +
-response.function_call_arguments.* events) is a 2b follow-up; non-streaming
-already handles tool calls.
+Streaming covers both assistant text and tool calls: the translator opens a
+`message` item for text and a `function_call` item per tool call, emitting
+`response.function_call_arguments.*` events as argument fragments arrive.
 """
 
 from __future__ import annotations
