@@ -49,6 +49,34 @@ def test_detects_claude_code(fingerprinter: Fingerprinter) -> None:
     assert fp.confidence >= 0.6
 
 
+def test_detects_codex(fingerprinter: Fingerprinter) -> None:
+    # Codex reaches the gateway via /v1/responses; its `developer` instructions
+    # translate to a system message carrying this sandbox/escalation block.
+    fp = fingerprinter.identify(
+        _req(
+            system=(
+                "<permissions instructions>\n"
+                "Filesystem sandboxing defines which files can be read or "
+                "written. `sandbox_mode` is `workspace-write`: The sandbox "
+                "permits reading files, and editing files in cwd.\n"
+                "# Escalation Requests\n"
+                "Commands are run outside the sandbox if approved by the user."
+            ),
+            user="explain this codebase",
+        )
+    )
+    assert fp.tool == DevTool.CODEX
+    assert fp.confidence >= 0.6
+
+
+def test_codex_not_confused_with_other_tools(fingerprinter: Fingerprinter) -> None:
+    """Codex's sandbox block shouldn't tag as Cline/Cursor/etc."""
+    fp = fingerprinter.identify(
+        _req(system="You are Codex, a coding agent.", user="hi")
+    )
+    assert fp.tool == DevTool.CODEX
+
+
 def test_detects_aider_from_search_replace(fingerprinter: Fingerprinter) -> None:
     fp = fingerprinter.identify(
         _req(
