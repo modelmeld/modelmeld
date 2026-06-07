@@ -142,6 +142,35 @@ async def test_tool_calls_surface_as_function_call_items() -> None:
     assert fcs[0]["call_id"] == "call_42"
 
 
+async def test_multi_turn_replay_input_does_not_422() -> None:
+    # Regression: the heterogeneous `input` array Codex replays after a tool
+    # round-trip (developer message + function_call + function_call_output +
+    # reasoning) used to fail request validation with a 422.
+    adapter = _StubAdapter(_text_completion("done"))
+    app = build_app(adapter=adapter)
+
+    resp = await _post(app, {
+        "model": "anthropic/modelmeld-auto",
+        "input": [
+            {"type": "message", "role": "developer",
+             "content": [{"type": "input_text", "text": "<permissions...>"}]},
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "list files"}]},
+            {"type": "function_call", "call_id": "c1", "name": "ls", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "c1", "output": "a.py"},
+            {"type": "reasoning", "summary": []},
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "read a.py"}]},
+        ],
+    })
+
+    assert resp.status_code == 200
+    # The tool result reached the adapter as a tool-role message.
+    roles = [type(m).__name__ for m in adapter.received.messages]
+    assert "ToolMessage" in roles
+    assert "AssistantMessage" in roles
+
+
 def _parse_responses_sse(raw: str) -> list[dict]:
     out: list[dict] = []
     for block in raw.split("\n\n"):

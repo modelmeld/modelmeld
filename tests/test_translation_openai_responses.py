@@ -13,6 +13,7 @@ from modelmeld.api.schemas import (
     ResponseMessage,
     SystemMessage,
     ToolCall,
+    ToolMessage,
     Usage,
     UserMessage,
 )
@@ -91,6 +92,106 @@ def test_non_function_tools_are_dropped() -> None:
     )
     out = from_responses_request(req)
     assert out.tools is None
+
+
+# -- Multi-turn replay: the heterogeneous `input` array a real agentic client
+#    (Codex) sends back after a tool round-trip. Regression for the 422 where
+#    function_call / function_call_output / reasoning items were rejected.
+
+def test_function_call_item_becomes_assistant_tool_call() -> None:
+    req = ResponsesRequest(
+        model="m",
+        input=[
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "weather in SF?"}]},
+            {"type": "function_call", "call_id": "call_9",
+             "name": "get_weather", "arguments": '{"city":"SF"}'},
+        ],
+    )
+    out = from_responses_request(req)
+    assert isinstance(out.messages[0], UserMessage)
+    assert isinstance(out.messages[1], AssistantMessage)
+    tcs = out.messages[1].tool_calls
+    assert tcs is not None and len(tcs) == 1
+    assert tcs[0].id == "call_9"
+    assert tcs[0].function.name == "get_weather"
+    assert tcs[0].function.arguments == '{"city":"SF"}'
+
+
+def test_function_call_output_becomes_tool_message() -> None:
+    req = ResponsesRequest(
+        model="m",
+        input=[
+            {"type": "function_call", "call_id": "call_9",
+             "name": "get_weather", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "call_9",
+             "output": "72F and sunny"},
+        ],
+    )
+    out = from_responses_request(req)
+    assert isinstance(out.messages[1], ToolMessage)
+    assert out.messages[1].tool_call_id == "call_9"
+    assert out.messages[1].content == "72F and sunny"
+
+
+def test_function_call_output_list_form_is_flattened() -> None:
+    req = ResponsesRequest(
+        model="m",
+        input=[
+            {"type": "function_call_output", "call_id": "c1",
+             "output": [{"type": "output_text", "text": "ab"},
+                        {"type": "output_text", "text": "cd"}]},
+        ],
+    )
+    out = from_responses_request(req)
+    assert isinstance(out.messages[0], ToolMessage)
+    assert out.messages[0].content == "abcd"
+
+
+def test_reasoning_item_is_skipped_not_rejected() -> None:
+    req = ResponsesRequest(
+        model="m",
+        input=[
+            {"type": "reasoning", "summary": [], "id": "rs_1"},
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "continue"}]},
+        ],
+    )
+    out = from_responses_request(req)
+    # Reasoning dropped; only the user message survives.
+    assert len(out.messages) == 1
+    assert isinstance(out.messages[0], UserMessage)
+    assert out.messages[0].content == "continue"
+
+
+def test_full_codex_replay_round_trips() -> None:
+    # The exact shape that 422'd against the hosted gateway: a developer
+    # message with input_text parts, a prior tool call, its output, and the
+    # next user turn — all in one `input` array.
+    req = ResponsesRequest(
+        model="m",
+        input=[
+            {"type": "message", "role": "developer",
+             "content": [{"type": "input_text", "text": "<permissions...>"}]},
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "list files"}]},
+            {"type": "function_call", "call_id": "c1",
+             "name": "ls", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "c1", "output": "a.py\nb.py"},
+            {"type": "reasoning", "summary": []},
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "now read a.py"}]},
+        ],
+    )
+    out = from_responses_request(req)
+    roles = [type(m).__name__ for m in out.messages]
+    assert roles == [
+        "SystemMessage",     # developer
+        "UserMessage",
+        "AssistantMessage",  # function_call
+        "ToolMessage",       # function_call_output
+        "UserMessage",       # reasoning dropped between them
+    ]
 
 
 # ---------------------------------------------------------------------------

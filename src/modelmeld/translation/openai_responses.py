@@ -25,15 +25,19 @@ from modelmeld.api.schemas import (
     AssistantMessage,
     ChatCompletion,
     ChatCompletionRequest,
+    FunctionCall,
     FunctionDef,
     Message,
     SystemMessage,
     Tool,
+    ToolCall,
+    ToolMessage,
     UserMessage,
 )
 from modelmeld.api.schemas_responses import (
     ResponsesContentPart,
     ResponsesFunctionCallItem,
+    ResponsesInputItem,
     ResponsesMessageItem,
     ResponsesOutputText,
     ResponsesRequest,
@@ -45,10 +49,28 @@ from modelmeld.api.schemas_responses import (
 # Inbound: Responses request → ChatCompletionRequest
 # ---------------------------------------------------------------------------
 
-def _item_text(content: str | list[ResponsesContentPart]) -> str:
+def _item_text(content: str | list[ResponsesContentPart] | None) -> str:
+    if content is None:
+        return ""
     if isinstance(content, str):
         return content
     return "".join(part.text for part in content if part.text)
+
+
+def _output_text(output: Any) -> str:
+    """A `function_call_output` carries its result in `output`, which may be a
+    plain string, a list of typed parts, or an object — normalize to text."""
+    if output is None:
+        return ""
+    if isinstance(output, str):
+        return output
+    if isinstance(output, list):
+        return "".join(
+            (p.get("text") or "") for p in output if isinstance(p, dict)
+        )
+    if isinstance(output, dict):
+        return output.get("text") or output.get("output") or ""
+    return str(output)
 
 
 def _to_message(role: str, text: str) -> Message:
@@ -58,6 +80,39 @@ def _to_message(role: str, text: str) -> Message:
     if role == "assistant":
         return AssistantMessage(role="assistant", content=text)
     return UserMessage(role="user", content=text)
+
+
+def _input_item_to_message(item: ResponsesInputItem) -> Message | None:
+    """Map one heterogeneous `input` item to a chat message, or None to skip.
+
+    Multi-turn Responses clients replay the full transcript, so the array mixes
+    role/content `message` items with `function_call` (assistant tool call),
+    `function_call_output` (tool result), and `reasoning` items."""
+    if item.type == "function_call":
+        # Assistant's prior tool invocation → assistant msg carrying the call.
+        return AssistantMessage(
+            role="assistant",
+            content=None,
+            tool_calls=[ToolCall(
+                id=item.call_id or "",
+                type="function",
+                function=FunctionCall(
+                    name=item.name or "", arguments=item.arguments or "",
+                ),
+            )],
+        )
+    if item.type == "function_call_output":
+        # Tool result fed back in → tool-role message keyed by call_id.
+        return ToolMessage(
+            role="tool",
+            tool_call_id=item.call_id or "",
+            content=_output_text(item.output),
+        )
+    # `reasoning` (and any other non-message type without a role) has no chat
+    # equivalent — drop it rather than 422.
+    if item.role is None:
+        return None
+    return _to_message(item.role, _item_text(item.content))
 
 
 def _to_chat_tools(tools: list[dict[str, Any]] | None) -> list[Tool] | None:
@@ -95,7 +150,9 @@ def from_responses_request(req: ResponsesRequest) -> ChatCompletionRequest:
         messages.append(UserMessage(role="user", content=req.input))
     else:
         for item in req.input:
-            messages.append(_to_message(item.role, _item_text(item.content)))
+            msg = _input_item_to_message(item)
+            if msg is not None:
+                messages.append(msg)
     return ChatCompletionRequest(
         model=req.model,
         messages=messages,
