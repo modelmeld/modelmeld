@@ -87,11 +87,12 @@ logged.
 
 ## Works with
 
-Drop-in for any tool that speaks OpenAI Chat Completions or Anthropic
-Messages.
+Drop-in for any tool that speaks OpenAI Chat Completions, OpenAI Responses,
+or Anthropic Messages.
 
 **Validated end-to-end:**
 [Claude Code](docs/integrations/claude-code.md) ·
+[Codex CLI](docs/integrations/codex-cli.md) ·
 [opencode](docs/integrations/opencode.md) ·
 [Aider](docs/integrations/aider.md) ·
 [AutoGen](docs/integrations/autogen.md) ·
@@ -103,8 +104,7 @@ OpenAI SDK · `anthropic-sdk-python` · `@anthropic-ai/sdk`
 **Should work, not yet live-tested:**
 [Cursor](docs/integrations/cursor.md) ·
 [Cline](docs/integrations/cline.md) ·
-[Continue](docs/integrations/continue.md) ·
-Codex CLI
+[Continue](docs/integrations/continue.md)
 
 Frameworks can declare task category + agent role explicitly via
 `x-modelmeld-task-category` / `x-modelmeld-agent-role` headers — bypasses
@@ -115,26 +115,18 @@ request represents. See [routing hints](docs/routing-hints.md).
 
 Honest non-coverage list for the v1 OSS API surface:
 
-- **OpenAI Responses API** (`/v1/responses`) — on the roadmap, not v1.
-  Current Codex CLI still uses `/v1/chat/completions` and works
-  through ModelMeld today; the newer Responses surface is the path
-  for clients adopting OpenAI's stateful agent loop.
 - **Anthropic image content blocks** (vision input) — deferred. Claude
   Code doesn't use vision; documented as a known gap rather than
   silently failing.
-- **Streaming `cache_control` stats** — non-streaming responses surface
-  `cache_creation_input_tokens` / `cache_read_input_tokens` correctly
-  (see the screenshot above). The streaming-translation pipeline
-  doesn't yet propagate the upstream `message_start` event's cache
-  counts; tracked.
 
 ## What's in the package
 
-- **Two API surfaces, one routing pipeline.** OpenAI-compatible at
-  `/v1/chat/completions` (drop-in for any OpenAI-wire-format client).
-  Anthropic-compatible at `/v1/messages` (drop-in for Claude Code,
-  `anthropic-sdk-python`, `@anthropic-ai/sdk`). Both surfaces stream
-  via SSE, share the same router / memory / cache pipeline, and emit
+- **Three API surfaces, one routing pipeline.** OpenAI-compatible at
+  `/v1/chat/completions` (drop-in for any OpenAI-wire-format client),
+  the OpenAI Responses API at `/v1/responses` (drop-in for Codex CLI),
+  and Anthropic-compatible at `/v1/messages` (drop-in for Claude Code,
+  `anthropic-sdk-python`, `@anthropic-ai/sdk`). All three stream via
+  SSE, share the same router / memory / cache pipeline, and emit
   identical `x-modelmeld-*` audit headers.
 - **Provider adapters** — OpenAI, Anthropic (with full schema
   translation in both directions), vLLM, TensorRT-LLM. Each adapter

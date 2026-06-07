@@ -105,7 +105,9 @@ auth enabled in production.
 | `MODELMELD_MEM0_LLM_MODEL` | `gpt-5-mini` | Extraction model. |
 | `MODELMELD_MEM0_EMBEDDER_MODEL` | `text-embedding-3-small` | Embedding model. |
 | `MODELMELD_MEM0_VECTOR_STORE_URL` | — | qdrant server URL (shared, per-tenant collection). |
+| `MODELMELD_MEM0_VECTOR_STORE_API_KEY` | — | API key for a remote qdrant endpoint (optional). |
 | `MODELMELD_MEM0_VECTOR_STORE_PATH` | — | Embedded on-disk qdrant (per-tenant subdir). |
+| `MODELMELD_MEM0_EMBEDDING_DIMS` | `1536` | Embedding vector dimensions (match your embedder model). |
 
 ## Limitations
 

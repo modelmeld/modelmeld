@@ -17,7 +17,7 @@ Three distinct surfaces, with three different stability levels:
 
 | Surface | Audience | Stability |
 |---|---|---|
-| HTTP routes (`/v1/chat/completions`, `/v1/messages`, `/v1/models`, `/healthz`) | API consumers (Cursor, Claude Code, framework integrations, etc.) | SemVer-stable from 0.1.0; breaking changes are major-version bumps |
+| HTTP routes (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/models`, `/healthz`) | API consumers (Cursor, Claude Code, Codex CLI, framework integrations, etc.) | SemVer-stable from 0.1.0; breaking changes are major-version bumps |
 | Top-level Python imports (`from modelmeld.X import Y`) for non-underscore names listed in this doc | Python integrators embedding the gateway in their own apps | SemVer-stable from 1.0.0; pre-1.0 may break with clear changelog entries |
 | Internal symbols (anything with `_` prefix, anything in `_internal.*`, plus per-module helpers not listed here) | Project maintainers only | No stability guarantees, change without notice |
 
@@ -40,6 +40,11 @@ require a major-version bump.
   breakpoints are forwarded verbatim to the upstream call via
   native-shape passthrough. Out of scope for v1: image content blocks.
   Same non-breaking / breaking rules as `/v1/chat/completions`.
+- `POST /v1/responses` — OpenAI Responses API shape (the Codex CLI
+  surface). Streaming via SSE as typed Responses events (`response.*`),
+  including `function_call` output items. Accepts multi-turn input
+  (`message` / `function_call` / `function_call_output` / `reasoning`
+  items). Same non-breaking / breaking rules as `/v1/chat/completions`.
 - `GET /v1/models` — returns the configured `available_models` list in
   OpenAI shape.
 - `GET /healthz` — liveness probe; returns 200 on a running gateway.

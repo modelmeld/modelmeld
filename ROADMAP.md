@@ -22,10 +22,11 @@ the most concrete; longer-range items are directional.
 Themes likely to land within the next 2–3 minor versions. Subject to
 revision based on contributor feedback + dogfooding signal.
 
-- **Postgres-backed memory store.** OSS users currently get the
-  in-process `InMemoryMemoryStore`; a Postgres implementation lands
-  next, behind an optional install extra so the default install stays
-  light.
+- **Durable memory backends.** Gateway-native semantic memory shipped
+  via the optional Mem0 provider (`pip install 'modelmeld[mem0]'`,
+  `MODELMELD_MEMORY_BACKEND=mem0`); the default remains the in-process
+  tiered store. A Postgres-backed durable store for the default path is
+  still open.
 - **Google Gemini adapter.** Capability registry already lists Gemini
   models. Only the wire-format adapter is missing.
 - **Streaming-failover refinements.** Better handling when an upstream
@@ -36,9 +37,6 @@ revision based on contributor feedback + dogfooding signal.
   classifier has known coverage gaps (e.g. `"reason through"` vs
   `"reason about"`). A lighter-weight statistical classifier is the
   most likely successor.
-- **Richer integration guides.** Cursor / Claude Code / Aider / Cline
-  guides to join the existing AutoGen / CrewAI / LangGraph / OpenClaw
-  set.
 
 ## Future themes (directional)
 
