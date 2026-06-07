@@ -118,19 +118,15 @@ Honest non-coverage list for the v1 OSS API surface:
 - **Anthropic image content blocks** (vision input) — deferred. Claude
   Code doesn't use vision; documented as a known gap rather than
   silently failing.
-- **Streaming `cache_control` stats** — non-streaming responses surface
-  `cache_creation_input_tokens` / `cache_read_input_tokens` correctly
-  (see the screenshot above). The streaming-translation pipeline
-  doesn't yet propagate the upstream `message_start` event's cache
-  counts; tracked.
 
 ## What's in the package
 
-- **Two API surfaces, one routing pipeline.** OpenAI-compatible at
-  `/v1/chat/completions` (drop-in for any OpenAI-wire-format client).
-  Anthropic-compatible at `/v1/messages` (drop-in for Claude Code,
-  `anthropic-sdk-python`, `@anthropic-ai/sdk`). Both surfaces stream
-  via SSE, share the same router / memory / cache pipeline, and emit
+- **Three API surfaces, one routing pipeline.** OpenAI-compatible at
+  `/v1/chat/completions` (drop-in for any OpenAI-wire-format client),
+  the OpenAI Responses API at `/v1/responses` (drop-in for Codex CLI),
+  and Anthropic-compatible at `/v1/messages` (drop-in for Claude Code,
+  `anthropic-sdk-python`, `@anthropic-ai/sdk`). All three stream via
+  SSE, share the same router / memory / cache pipeline, and emit
   identical `x-modelmeld-*` audit headers.
 - **Provider adapters** — OpenAI, Anthropic (with full schema
   translation in both directions), vLLM, TensorRT-LLM. Each adapter

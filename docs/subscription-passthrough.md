@@ -77,11 +77,14 @@ llm -m gpt-5.4 "summarize this readme"
 - The bearer is never persisted to the gateway's disk; no log line
   contains the token bytes (only a length-preserving redaction).
 
-**What does NOT work yet (in v0.4.0):**
-- Native Codex CLI plug-and-play: Codex CLI hardcodes the
-  `/responses` endpoint (no `/v1` prefix). Until ModelMeld exposes
-  that surface (tracked separately), use the `llm-openai-via-codex`
-  pattern above.
+**Native Codex CLI:**
+- ModelMeld now exposes the OpenAI Responses API at `/v1/responses`, so
+  Codex CLI can point directly at the gateway via a custom provider
+  (`wire_api = "responses"`) — see the
+  [Codex CLI guide](integrations/codex-cli.md) — instead of the
+  `llm-openai-via-codex` pattern above. When the bearer is a Codex
+  OAuth JWT and passthrough is enabled, the Responses route resolves
+  the same `CodexPassthroughAdapter` described here.
 
 ## Path 2: Claude Max via the Anthropic Messages API
 

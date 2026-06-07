@@ -193,9 +193,9 @@ If pre-writing the cache file is too fiddly, you can add a single
 ModelMeld auto-route alias to the picker via the supported manual API:
 
 ```bash
-export ANTHROPIC_CUSTOM_MODEL_OPTION=anthropic/modelmeld-coding
-export ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="ModelMeld Coding"
-export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="Auto-routed across OSS coding-tuned models"
+export ANTHROPIC_CUSTOM_MODEL_OPTION=anthropic/modelmeld-saver
+export ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="ModelMeld Saver"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="Auto-routed across OSS models (max savings, predictable ceiling)"
 ```
 
 This adds one entry to `/model` without touching the cache file — a
