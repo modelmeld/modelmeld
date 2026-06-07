@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     setup_p.add_argument(
         "--tool",
-        choices=["claude-code"],  # cursor, aider, cline, continue post-launch
+        choices=["claude-code", "codex"],  # cursor, aider, cline, continue next
         default="claude-code",
         help="Which coding tool to configure (default: claude-code)",
     )

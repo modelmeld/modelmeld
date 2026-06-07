@@ -452,16 +452,207 @@ def _write_claude_code_cache(
 
 
 # ---------------------------------------------------------------------------
+# Codex CLI specifics — config.toml provider block + env script
+# ---------------------------------------------------------------------------
+
+
+def _codex_config_content(base_url: str) -> str:
+    """The `~/.codex/config.toml` provider block pointing Codex at the gateway.
+
+    Codex speaks the Responses API, so `wire_api = "responses"`. The key is
+    read from the `MODELMELD_API_KEY` env var (named by `env_key`) — never
+    written into the config file.
+    """
+    return (
+        'model = "anthropic/modelmeld-saver"\n'
+        'model_provider = "modelmeld"\n'
+        "\n"
+        "[model_providers.modelmeld]\n"
+        'name = "ModelMeld"\n'
+        f'base_url = "{base_url}/v1"\n'
+        'env_key = "MODELMELD_API_KEY"\n'
+        'wire_api = "responses"\n'
+    )
+
+
+def _write_codex_config(target: Path, base_url: str) -> None:
+    _atomic_write_text(target, _codex_config_content(base_url), mode=0o644)
+
+
+def _codex_env_script_content(target: Path, api_key: str) -> str:
+    return (
+        "\n".join([
+            "#!/bin/bash",
+            "# ModelMeld + Codex CLI setup. Source this from your shell:",
+            f"#   source {target}",
+            "",
+            f"export MODELMELD_API_KEY={api_key}",
+        ])
+        + "\n"
+    )
+
+
+def _write_codex_env_script(target: Path, api_key: str) -> None:
+    _atomic_write_text(target, _codex_env_script_content(target, api_key), mode=0o600)
+
+
+def _smoke_test_responses(base_url: str, api_key: str) -> list[SmokeResult]:
+    """Two tests: /v1/models reachability + a /v1/responses generation via the
+    -saver alias (the surface + policy Codex uses)."""
+    results: list[SmokeResult] = []
+
+    status, _hdrs, body = _http_get(
+        f"{base_url}/v1/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    if status == 200:
+        try:
+            n = len(json.loads(body).get("data", []))
+            results.append(SmokeResult("models discovery", True, f"{n} models advertised"))
+        except json.JSONDecodeError:
+            results.append(SmokeResult("models discovery", False, "200 but body not JSON"))
+    elif status == 401:
+        results.append(SmokeResult(
+            "models discovery", False,
+            "401 invalid API key — check your gws_ key is correct + not expired",
+        ))
+    else:
+        results.append(SmokeResult(
+            "models discovery", False,
+            f"HTTP {status} — {body[:100].decode('utf-8', 'replace')}",
+        ))
+
+    status, hdrs, body = _http_post_json(
+        f"{base_url}/v1/responses",
+        body={
+            "model": "anthropic/modelmeld-saver",
+            "input": "Reply in one short sentence: what does ModelMeld do?",
+        },
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    if status == 200:
+        routed = hdrs.get("x-modelmeld-routed-model")
+        results.append(SmokeResult(
+            "Responses routing (-saver)", True,
+            f"served by {routed or 'unknown'}", routed_model=routed,
+        ))
+    else:
+        try:
+            err_body: Any = json.loads(body)
+        except Exception:
+            err_body = {"detail": body[:200].decode("utf-8", "replace")}
+        results.append(SmokeResult(
+            "Responses routing (-saver)", False, f"HTTP {status}: {err_body}",
+        ))
+    return results
+
+
+def _setup_codex(args: Any, base_url: str, interactive: bool) -> int:
+    """Configure Codex CLI to route through ModelMeld via /v1/responses."""
+    print(_bold("ModelMeld — Codex CLI setup"))
+    print(f"  Gateway: {base_url}")
+
+    # --- Collect credentials ---
+    _step("Step 1/4: Collect credentials")
+    api_key = _normalize(args.api_key) if args.api_key else ""
+    if not api_key:
+        if not interactive:
+            _err("--api-key not supplied and --yes (non-interactive) is set")
+            return 2
+        print(
+            "  Your ModelMeld API key (starts with 'gws_'). Get one at "
+            "https://modelmeld.ai/account if you don't have one.",
+        )
+        api_key = _prompt_secret("  API key: ")
+    if not api_key.startswith("gws_"):
+        _warn("API key doesn't start with 'gws_' — usually means a copy-paste error")
+    _ok(f"ModelMeld API key set ({len(api_key)} chars)")
+    # No BYOK prompt: Codex is configured for the -saver policy, which is
+    # OSS-only and never escalates to a frontier provider. Switch the `model`
+    # to -auto/-quality and add a BYOK header if you want frontier routing.
+
+    # --- Write the sourceable env script (holds the key; config.toml doesn't) ---
+    _step("Step 2/4: Write env script")
+    setup_dir = Path.home() / ".modelmeld"
+    env_script = setup_dir / "setup-codex.sh"
+    try:
+        _write_codex_env_script(env_script, api_key)
+        _ok(f"Wrote {env_script} (LF-only, mode 0600)")
+    except Exception as e:
+        _err(f"Failed to write env script: {e}")
+        return 1
+
+    # --- Configure ~/.codex/config.toml (never clobber an existing one) ---
+    _step("Step 3/4: Configure ~/.codex/config.toml")
+    codex_config = Path.home() / ".codex" / "config.toml"
+    snippet = setup_dir / "codex-config-snippet.toml"
+    merge_needed = False
+    try:
+        if codex_config.exists():
+            existing = codex_config.read_text(encoding="utf-8", errors="replace")
+            if "[model_providers.modelmeld]" in existing:
+                _warn(
+                    f"{codex_config} already has a [model_providers.modelmeld] "
+                    "block — leaving your config untouched.",
+                )
+            else:
+                _write_codex_config(snippet, base_url)
+                merge_needed = True
+                _ok(f"Wrote {snippet}")
+                _warn(
+                    f"{codex_config} already exists — merge the snippet above "
+                    "into it (don't overwrite your other providers).",
+                )
+        else:
+            _write_codex_config(codex_config, base_url)
+            _ok(f"Wrote {codex_config}")
+    except Exception as e:
+        _err(f"Failed to write Codex config: {e}")
+        return 1
+
+    # --- Smoke-test the Responses surface ---
+    if not args.skip_smoke_test:
+        _step("Step 4/4: Smoke-test /v1/responses")
+        results = _smoke_test_responses(base_url, api_key)
+        for r in results:
+            if r.ok:
+                _ok(f"{r.label}: {r.detail}")
+            else:
+                _err(f"{r.label}: {r.detail}")
+        if not all(r.ok for r in results):
+            _err("Some smoke tests failed. See errors above for next steps.")
+            return 1
+    else:
+        _step("Step 4/4: Smoke-test (skipped)")
+
+    # --- Final instructions ---
+    print()
+    print(_bold("Setup complete."))
+    print()
+    print("  1. Source the env script (or set MODELMELD_API_KEY yourself):")
+    print(f"     {_bold(f'source {env_script}')}")
+    if merge_needed:
+        print(f"  2. Merge {snippet} into {codex_config}")
+        print("  3. Launch Codex:")
+    else:
+        print("  2. Launch Codex:")
+    print(f"     {_bold('codex')}")
+    print()
+    print("  Routing policy is the `model` field in config.toml:")
+    print(f"     • {_bold('anthropic/modelmeld-saver')}   (OSS-only, predictable ceiling)")
+    print(f"     • {_bold('anthropic/modelmeld-auto')}    (escalates to frontier on reasoning markers)")
+    print(f"     • {_bold('anthropic/modelmeld-quality')} (frontier-first)")
+    print()
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Main flow
 # ---------------------------------------------------------------------------
 
 
 def run_setup(args: Any) -> int:
     """Execute the `modelmeld setup` command. Returns process exit code."""
-    if args.tool != "claude-code":
-        _err(f"--tool {args.tool!r} not supported yet (Claude Code only at launch)")
-        return 2
-
     base_url = args.base_url.rstrip("/")
     try:
         _validate_base_url(base_url, allow_custom_host=args.allow_custom_host)
@@ -469,6 +660,13 @@ def run_setup(args: Any) -> int:
         _err(str(e))
         return 2
     interactive = not args.yes
+
+    if args.tool == "codex":
+        return _setup_codex(args, base_url, interactive)
+    if args.tool != "claude-code":
+        _err(f"--tool {args.tool!r} not supported yet")
+        return 2
+
     print(_bold("ModelMeld — Claude Code setup"))
     print(f"  Gateway: {base_url}")
 

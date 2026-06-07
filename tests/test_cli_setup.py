@@ -28,9 +28,12 @@ skip_on_windows_modes = pytest.mark.skipif(
 
 from modelmeld.cli.setup import (
     _atomic_write_text,
+    _codex_config_content,
     _normalize,
     _write_claude_code_cache,
     _write_claude_code_env_script,
+    _write_codex_config,
+    _write_codex_env_script,
 )
 
 # ---------------------------------------------------------------------------
@@ -186,6 +189,51 @@ def test_env_script_has_mode_0600(tmp_path: Path) -> None:
     import stat
     target = tmp_path / "setup.sh"
     _write_claude_code_env_script(target, "https://x.com", "gws_K", None, None)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+# ---------------------------------------------------------------------------
+# Codex CLI — config.toml provider block + env script
+# ---------------------------------------------------------------------------
+
+
+def test_codex_config_has_responses_provider_block() -> None:
+    content = _codex_config_content("https://gateway.example.com")
+    assert 'model_provider = "modelmeld"' in content
+    assert "[model_providers.modelmeld]" in content
+    assert 'base_url = "https://gateway.example.com/v1"' in content
+    # Codex speaks the Responses API — the wire_api MUST be responses.
+    assert 'wire_api = "responses"' in content
+    # Key is read from an env var, never written into the config file.
+    assert 'env_key = "MODELMELD_API_KEY"' in content
+    assert "gws_" not in content
+
+
+def test_codex_config_default_model_is_saver() -> None:
+    # Predictable cost ceiling by default — OSS-only, no silent frontier.
+    content = _codex_config_content("https://x.com")
+    assert 'model = "anthropic/modelmeld-saver"' in content
+
+
+def test_write_codex_config_is_lf_only(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    _write_codex_config(target, "https://x.com")
+    assert b"\r" not in target.read_bytes()
+
+
+def test_codex_env_script_exports_only_the_key(tmp_path: Path) -> None:
+    target = tmp_path / "setup-codex.sh"
+    _write_codex_env_script(target, "gws_CODEXKEY")
+    content = target.read_text(encoding="utf-8")
+    assert "export MODELMELD_API_KEY=gws_CODEXKEY" in content
+    assert b"\r" not in target.read_bytes()
+
+
+@skip_on_windows_modes
+def test_codex_env_script_has_mode_0600(tmp_path: Path) -> None:
+    import stat
+    target = tmp_path / "setup-codex.sh"
+    _write_codex_env_script(target, "gws_K")
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
