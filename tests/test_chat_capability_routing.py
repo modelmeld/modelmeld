@@ -137,6 +137,43 @@ async def test_capability_routing_overrides_request_model() -> None:
     assert resp.headers["x-modelmeld-quality-threshold"] == "0.80"
 
 
+async def test_routing_rationale_header_is_env_gated(monkeypatch) -> None:
+    """The full routing rationale is internal telemetry — emitted only when
+    MODELMELD_EXPOSE_ROUTING_RATIONALE=1, never on a default/public surface."""
+    cheap = _FakeAdapter("vllm")
+    expensive = _FakeAdapter("anthropic")
+    app = _build_app_with_capability_router(
+        registry_entries=[
+            _entry("qwen-cheap", "vllm", 0.5, 1.0, coding=0.85),
+            _entry("opus", "anthropic", 5.0, 25.0, coding=0.95),
+        ],
+        adapters={"vllm": cheap, "anthropic": expensive},
+    )
+
+    # Off by default — the internal rationale must NOT leak into responses.
+    monkeypatch.delenv("MODELMELD_EXPOSE_ROUTING_RATIONALE", raising=False)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/v1/chat/completions", json=_payload("refactor this function"),
+        )
+    assert "x-modelmeld-routing-rationale" not in resp.headers
+
+    # Enabled (internal/dogfood loop) — full rationale surfaced for telemetry.
+    monkeypatch.setenv("MODELMELD_EXPOSE_ROUTING_RATIONALE", "1")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/v1/chat/completions", json=_payload("refactor this function"),
+        )
+    rationale = resp.headers.get("x-modelmeld-routing-rationale")
+    assert rationale is not None
+    assert "chose=qwen-cheap" in rationale
+    assert "category=coding" in rationale
+
+
 # ---------------------------------------------------------------------------
 # When threshold is too high → 400 from chat route (client-side problem;
 # was 503 pre-fix but the customer is the one with a request we can't
