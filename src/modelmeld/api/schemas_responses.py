@@ -35,11 +35,26 @@ class ResponsesContentPart(BaseModel):
 
 
 class ResponsesInputItem(BaseModel):
-    """One role/content entry in the `input` array."""
+    """One entry in the `input` array.
+
+    The array is heterogeneous: a multi-turn client (e.g. Codex) replays the
+    whole conversation, so beyond role/content `message` items it also sends
+    `function_call` (a prior tool call), `function_call_output` (a tool result),
+    and `reasoning` items — none of which carry a `role`. Every field is
+    therefore optional and the item is keyed by `type`; the translator decides
+    what each item becomes (or skips it)."""
 
     model_config = ConfigDict(extra="allow")
-    role: str  # user | assistant | system | developer
-    content: str | list[ResponsesContentPart]
+    type: str | None = None
+    # message items
+    role: str | None = None  # user | assistant | system | developer
+    content: str | list[ResponsesContentPart] | None = None
+    # function_call items (assistant's prior tool invocation)
+    call_id: str | None = None
+    name: str | None = None
+    arguments: str | None = None
+    # function_call_output items (tool result fed back in)
+    output: Any | None = None
 
 
 class ResponsesRequest(BaseModel):
