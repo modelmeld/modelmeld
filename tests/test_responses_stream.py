@@ -188,6 +188,44 @@ def test_mixed_text_then_tool_call_indices() -> None:
     assert output[1]["arguments"] == '{"q":"x"}'
 
 
+def test_usage_estimated_when_upstream_omits_usage() -> None:
+    # No chunk carries usage (typical of OSS providers in streaming mode) →
+    # finalize falls back to char-based output estimate + caller's input count.
+    t = ResponsesStreamTranslator(model="m")
+    events: list[dict] = []
+    events += t.translate_chunk(_chunk("12345678"))  # 8 chars
+    events += t.translate_chunk(_chunk("abcd"))       # 4 chars → 12 total → 3 tok
+    events += t.finalize(input_tokens=7)
+
+    _validate_all(events)
+    usage = events[-1]["response"]["usage"]
+    assert usage["input_tokens"] == 7
+    assert usage["output_tokens"] == 3
+    assert usage["total_tokens"] == 10
+
+
+def test_tool_argument_chars_count_toward_output_estimate() -> None:
+    t = ResponsesStreamTranslator(model="m")
+    events: list[dict] = []
+    events += t.translate_chunk(_tool_open(0, "c1", "f"))
+    events += t.translate_chunk(_tool_args(0, '{"x":"yyyyyyyy"}'))  # 16 chars → 4 tok
+    events += t.finalize(input_tokens=0)
+
+    usage = events[-1]["response"]["usage"]
+    assert usage["output_tokens"] == 4
+
+
+def test_real_upstream_usage_overrides_estimate() -> None:
+    t = ResponsesStreamTranslator(model="m")
+    t.translate_chunk(_chunk("hello"))
+    t.translate_chunk(_chunk(usage=Usage(prompt_tokens=50, completion_tokens=9, total_tokens=59)))
+    events = t.finalize(input_tokens=999)  # estimate ignored — real usage won
+
+    usage = events[-1]["response"]["usage"]
+    assert usage["input_tokens"] == 50
+    assert usage["output_tokens"] == 9
+
+
 def test_two_parallel_tool_calls_get_distinct_items() -> None:
     t = ResponsesStreamTranslator(model="m")
     events: list[dict] = []

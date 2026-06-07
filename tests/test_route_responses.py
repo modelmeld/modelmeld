@@ -239,6 +239,49 @@ class _ToolStreamAdapter(ProviderAdapter):
         return True
 
 
+class _NoUsageStreamAdapter(ProviderAdapter):
+    """Streams text but never reports usage — mirrors most OSS providers."""
+
+    name = "stub-no-usage"
+    is_egress = False
+
+    async def chat(self, request: ChatCompletionRequest) -> ChatCompletion:
+        raise NotImplementedError("streaming-only fixture")
+
+    async def stream_chat(
+        self, request: ChatCompletionRequest,
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        yield ChatCompletionChunk(
+            id="c", created=0, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(role="assistant", content="hello world"))],
+        )
+        yield ChatCompletionChunk(
+            id="c", created=0, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(), finish_reason="stop")],
+        )  # no usage on the terminal chunk
+
+    async def health(self) -> bool:
+        return True
+
+
+async def test_streaming_usage_is_estimated_when_upstream_omits_it() -> None:
+    app = build_app(adapter=_NoUsageStreamAdapter())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post(
+            "/v1/responses",
+            json={"model": "anthropic/modelmeld-auto", "input": "say hi", "stream": True},
+        )
+
+    assert resp.status_code == 200
+    events = _parse_responses_sse(resp.text)
+    usage = events[-1]["response"]["usage"]
+    # "hello world" → non-zero output estimate even with no upstream usage.
+    assert usage["output_tokens"] > 0
+    assert usage["total_tokens"] >= usage["output_tokens"]
+
+
 async def test_streaming_tool_call_emits_function_call_events() -> None:
     app = build_app(adapter=_ToolStreamAdapter())
     async with httpx.AsyncClient(
