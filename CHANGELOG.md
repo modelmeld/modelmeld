@@ -14,6 +14,14 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.11.0](https://github.com/modelmeld/modelmeld/compare/v0.10.3...v0.11.0) (2026-06-07)
+
+
+### Features
+
+* **cli:** add Codex CLI to `modelmeld setup --tool` ([#60](https://github.com/modelmeld/modelmeld/issues/60)) ([2fbdedd](https://github.com/modelmeld/modelmeld/commit/2fbdedd9303243cb4d98d0926e40147db605e14f))
+* **scout:** fingerprint Codex CLI in the DevTool detector ([#58](https://github.com/modelmeld/modelmeld/issues/58)) ([99e615b](https://github.com/modelmeld/modelmeld/commit/99e615b87b1905fee5d6034792195a114303f3b8))
+
 ## [0.10.3](https://github.com/modelmeld/modelmeld/compare/v0.10.2...v0.10.3) (2026-06-07)
 
 
