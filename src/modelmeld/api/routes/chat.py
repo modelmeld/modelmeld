@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -1056,6 +1057,15 @@ def _routing_headers(
             bias_name = bias_segment.split("(", 1)[0].split(";", 1)[0]
             if bias_name:
                 headers["x-modelmeld-bias"] = bias_name
+        # Internal/ops-only: surface the full routing rationale (escalation
+        # markers, chosen-model trace, score, blended cost) for telemetry —
+        # the dogfooding loop runner captures this to study why each request
+        # routed where it did. Gated behind an env flag (default off) so it is
+        # NEVER emitted on a public hosted surface; the rationale exposes served
+        # model IDs + routing internals (not backend-provider names). Operator
+        # override, same pattern as MODELMELD_REASONING_MARKERS.
+        if rationale and os.getenv("MODELMELD_EXPOSE_ROUTING_RATIONALE") == "1":
+            headers["x-modelmeld-routing-rationale"] = rationale[:480]
     if redactions:
         headers["x-modelmeld-redactions"] = ",".join(
             f"{r.label}:{r.count}" for r in redactions
