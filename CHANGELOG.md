@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.10.0](https://github.com/modelmeld/modelmeld/compare/v0.9.0...v0.10.0) (2026-06-07)
+
+
+### Features
+
+* **responses:** stream tool calls as function_call items ([#50](https://github.com/modelmeld/modelmeld/issues/50)) ([bff6d75](https://github.com/modelmeld/modelmeld/commit/bff6d759aa249cfcf4d024b66e288576b4697629))
+
 ## [0.9.0](https://github.com/modelmeld/modelmeld/compare/v0.8.2...v0.9.0) (2026-06-06)
 
 
