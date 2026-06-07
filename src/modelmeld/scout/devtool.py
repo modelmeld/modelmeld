@@ -4,8 +4,9 @@
 """Dev-tool fingerprinter.
 
 Identifies which client tool likely originated a request — Cursor, Claude Code,
-Aider, Cline, or generic OpenAI/Anthropic SDK usage. Detection is best-effort
-regex matching against message text; false positives and negatives are expected.
+Codex, Aider, Cline, or generic OpenAI/Anthropic SDK usage. Detection is
+best-effort regex matching against message text; false positives and negatives
+are expected.
 
 Used for:
     - Per-tool savings benchmarks (deferred work)
@@ -39,6 +40,7 @@ class DevTool(str, Enum):
 
     CURSOR = "cursor"
     CLAUDE_CODE = "claude_code"
+    CODEX = "codex"
     AIDER = "aider"
     CLINE = "cline"
     OPENCODE = "opencode"
@@ -109,6 +111,20 @@ _DEFAULT_PATTERNS: dict[DevTool, list[re.Pattern[str]]] = {
         re.compile(r"\bI am Cline\b", re.IGNORECASE),
         re.compile(r"<read_file>|<execute_command>|<write_to_file>", re.IGNORECASE),
         re.compile(r"You are Cline\b", re.IGNORECASE),
+    ],
+    # Codex CLI (github.com/openai/codex). Reaches the gateway via the
+    # /v1/responses surface; its `developer` instructions translate to a system
+    # message carrying a distinctive sandbox/escalation harness block. The HTTP
+    # `originator: codex_cli_rs` header is a stronger signal but this
+    # fingerprinter only sees message text, so we key off the prompt content.
+    DevTool.CODEX: [
+        re.compile(r"\bYou are Codex\b", re.IGNORECASE),
+        re.compile(r"Filesystem sandboxing defines which files", re.IGNORECASE),
+        re.compile(
+            r"sandbox_mode`?\s+is\s+`?(?:workspace-write|read-only|danger-full-access)",
+            re.IGNORECASE,
+        ),
+        re.compile(r"#\s*Escalation Requests", re.IGNORECASE),
     ],
     # opencode (github.com/sst/opencode) — SST's terminal coding agent.
     # Known limitation: opencode actively spoofs the upstream provider's
