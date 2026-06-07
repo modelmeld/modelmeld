@@ -14,7 +14,7 @@ The endpoint must support enough of Anthropic's Messages API surface that Claude
 
 ## Non-goals (v1)
 
-- Anthropic prompt caching (`cache_control` blocks) — accept the field, ignore it; document as known limitation
+- ~~Anthropic prompt caching (`cache_control` blocks)~~ — **now supported** (shipped post-v1): breakpoints are forwarded verbatim to the upstream call via native-shape passthrough, and cache stats (`cache_creation_input_tokens` / `cache_read_input_tokens`) surface on both the streaming and non-streaming paths.
 - Anthropic Beta features (computer-use, multi-document, code-execution) — not in scope
 - Anthropic's `count_tokens` endpoint — separate work item
 - Anthropic's `models` listing endpoint — already covered by existing `/v1/models` (OpenAI shape); cross-API model discovery is a separate concern
@@ -184,7 +184,7 @@ class OpenAIToAnthropicStreamTranslator:
 | `tool_choice` `{type:"any"}` | `"required"` | Map literal |
 | `tool_choice` `{type:"tool",name}` | `{type:"function",function:{name}}` | Specific tool |
 | `metadata` | (ignored, accepted) | Anthropic carries `user_id`; not used by our routing yet |
-| `cache_control` blocks | (ignored, accepted) | Document as known limitation |
+| `cache_control` blocks | Forwarded verbatim (native-shape passthrough) | Cache stats surfaced on both streaming + non-streaming paths (shipped post-v1) |
 
 ### Response: OpenAI → Anthropic
 
