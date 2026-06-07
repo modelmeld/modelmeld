@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.10.3](https://github.com/modelmeld/modelmeld/compare/v0.10.2...v0.10.3) (2026-06-07)
+
+
+### Documentation
+
+* correct Codex setup and refresh stale claims after 0.8-0.10 ([#56](https://github.com/modelmeld/modelmeld/issues/56)) ([2775cbc](https://github.com/modelmeld/modelmeld/commit/2775cbc3accb24751f0e7dd2046aa3d2b128da63))
+
 ## [0.10.2](https://github.com/modelmeld/modelmeld/compare/v0.10.1...v0.10.2) (2026-06-07)
 
 
