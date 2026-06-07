@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.10.2](https://github.com/modelmeld/modelmeld/compare/v0.10.1...v0.10.2) (2026-06-07)
+
+
+### Bug Fixes
+
+* **responses:** estimate token usage when streaming upstream omits it ([#54](https://github.com/modelmeld/modelmeld/issues/54)) ([14dc246](https://github.com/modelmeld/modelmeld/commit/14dc246d231e9de051d625688a765950b824f7b1))
+
 ## [0.10.1](https://github.com/modelmeld/modelmeld/compare/v0.10.0...v0.10.1) (2026-06-07)
 
 
