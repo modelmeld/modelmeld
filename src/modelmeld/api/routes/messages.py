@@ -169,6 +169,37 @@ def _collect_oauth_camouflage_headers(
     return out
 
 
+def _native_body_for_upstream(
+    body: AnthropicMessagesRequest, served_model: str | None,
+) -> AnthropicMessagesRequest:
+    """Build the native Anthropic body to send upstream.
+
+    When capability/alias routing serves a model different from what the client
+    requested, pin the body's `model` to the served pick AND drop the client's
+    `thinking` config — it was tuned for the requested model and may be
+    unsupported on the one we route to (Anthropic 400 "adaptive thinking is not
+    supported on this model"). No substitution → return `body` unchanged so
+    `thinking` (and everything else, incl. cache_control) passes through
+    verbatim. Capability-aware gating is tracked as projectplan B-3.
+
+    The drop must happen here, not in the adapter: the adapter receives a body
+    whose `model` is already rewritten to the served pick, so it can no longer
+    tell that a substitution occurred.
+    """
+    if not served_model or served_model == body.model:
+        return body
+    native_body = body.model_copy(update={"model": served_model})
+    extra = native_body.model_extra
+    if isinstance(extra, dict) and "thinking" in extra:
+        # Replace (not mutate) the extra dict so the original body is untouched.
+        object.__setattr__(
+            native_body,
+            "__pydantic_extra__",
+            {k: v for k, v in extra.items() if k != "thinking"},
+        )
+    return native_body
+
+
 async def _dispatch_chat(
     adapter: Any,
     request: ChatCompletionRequest,
@@ -192,9 +223,7 @@ async def _dispatch_chat(
         # (e.g., "anthropic/modelmeld-quality"). Anthropic returns 404 on
         # that. Rewrite the body's model field to the scout's pick if a
         # model_id_override is set.
-        native_body = body
-        if decision.model_id_override and decision.model_id_override != body.model:
-            native_body = body.model_copy(update={"model": decision.model_id_override})
+        native_body = _native_body_for_upstream(body, decision.model_id_override)
         return await adapter.chat(
             request, native_request=native_body, extra_headers=extra_headers,
         )
@@ -217,9 +246,7 @@ async def _try_open_stream_native(
     rather than the original alias (which Anthropic would 404 on).
     """
     if isinstance(adapter, AnthropicAdapter):
-        native_body = body
-        if model_override and model_override != body.model:
-            native_body = body.model_copy(update={"model": model_override})
+        native_body = _native_body_for_upstream(body, model_override)
         aiter = adapter.stream_chat(
             request, native_request=native_body, extra_headers=extra_headers,
         ).__aiter__()
