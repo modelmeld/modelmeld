@@ -968,3 +968,45 @@ def test_oauth_camouflage_headers_skips_byok_and_authorization() -> None:
     assert out == {}
     assert "authorization" not in out
     assert "x-modelmeld-byok-anthropic" not in out
+
+
+# ---------------------------------------------------------------------------
+# Model-substitution: drop client `thinking` (tuned for the requested model;
+# may be unsupported on the routed one — Anthropic 400 "adaptive thinking is
+# not supported on this model"). Must happen at the route, where the alias vs
+# served-model substitution is still visible.
+# ---------------------------------------------------------------------------
+
+def test_native_body_drops_thinking_on_substitution() -> None:
+    from modelmeld.api.routes.messages import _native_body_for_upstream
+    from modelmeld.api.schemas_anthropic import AnthropicMessagesRequest
+
+    body = AnthropicMessagesRequest.model_validate({
+        "model": "anthropic/modelmeld-auto",
+        "max_tokens": 64,
+        "messages": [{"role": "user", "content": "hi"}],
+        "thinking": {"type": "adaptive"},
+    })
+    out = _native_body_for_upstream(body, "claude-sonnet-4-6")
+    assert out.model == "claude-sonnet-4-6"
+    assert "thinking" not in (out.model_extra or {})
+    # Original body untouched (no mutation of the caller's object).
+    assert (body.model_extra or {}).get("thinking") == {"type": "adaptive"}
+
+
+def test_native_body_preserves_thinking_when_no_substitution() -> None:
+    from modelmeld.api.routes.messages import _native_body_for_upstream
+    from modelmeld.api.schemas_anthropic import AnthropicMessagesRequest
+
+    thinking = {"type": "enabled", "budget_tokens": 1024}
+    body = AnthropicMessagesRequest.model_validate({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 64,
+        "messages": [{"role": "user", "content": "hi"}],
+        "thinking": thinking,
+    })
+    # served == requested → no substitution → unchanged (thinking preserved).
+    out = _native_body_for_upstream(body, "claude-sonnet-4-6")
+    assert (out.model_extra or {}).get("thinking") == thinking
+    # served None → unchanged too.
+    assert _native_body_for_upstream(body, None) is body
