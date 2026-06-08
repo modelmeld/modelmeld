@@ -174,6 +174,19 @@ async def test_routing_rationale_header_is_env_gated(monkeypatch) -> None:
     assert "category=coding" in rationale
 
 
+def test_latin1_safe_coerces_non_latin1_header_values() -> None:
+    """HTTP header values must be latin-1-encodable or Starlette 500s. Routing
+    header values (e.g. the free-form rationale) can carry a `→`; coerce them.
+    Regression for the dogfooding 500 (UnicodeEncodeError on '\\u2192')."""
+    from modelmeld.api.routes.chat import _latin1_safe
+
+    out = _latin1_safe("chose=x→y;policy=auto")
+    out.encode("latin-1")  # must NOT raise
+    assert "→" not in out
+    # ASCII passes through untouched.
+    assert _latin1_safe("category=coding") == "category=coding"
+
+
 # ---------------------------------------------------------------------------
 # When threshold is too high → 400 from chat route (client-side problem;
 # was 503 pre-fix but the customer is the one with a request we can't
