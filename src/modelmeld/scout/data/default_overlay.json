@@ -1,7 +1,7 @@
 {
   "version": 1,
   "snapshot_release_date": "2026-05-30",
-  "notes": "Multi-provider availability overlay for canonical OSS coding models. Loaded automatically by MultiProviderModelRegistry.load_default() on top of the base default_registry.json. Each row adds one (model_id, provider) availability with its provider-specific model identifier and cost. Task scores are inherited from the base registry entry for the same model_id. Costs are per million tokens (USD), validated against the upstream providers' live model catalogs on the snapshot release date via scripts/validate_overlay.py for Together and OpenRouter; Fireworks catalog responses omit pricing, so Fireworks rows use the most recent published rate-card values and may drift first. The full curated lineup with weekly refresh and provider-reliability data is available via the live feed (MODELMELD_REGISTRY_FEED_URL + license key). See docs/registry-feed.md.",
+  "notes": "Multi-provider availability overlay for canonical OSS coding models. Loaded automatically by MultiProviderModelRegistry.load_default() on top of the base default_registry.json. Each row adds one (model_id, provider) availability with its provider-specific model identifier and cost. Task scores merge over the base registry entry for the same model_id (overlay row keys override base per-key; unspecified categories are inherited). Costs are per million tokens (USD), validated against the upstream providers' live model catalogs on the snapshot release date via scripts/validate_overlay.py for Together and OpenRouter; Fireworks catalog responses omit pricing, so Fireworks rows use the most recent published rate-card values and may drift first. tool_use scores sourced modelmeld_tool_eval_v1_2026_06_07 are MEASURED per (model, provider) on an agentic multi-step bug-fix eval, calibrated onto the registry scale by anchoring the eval's top frontier model (claude-sonnet-4-6, which scored 1.0 on the eval) to its registry tool_use of 0.85 (score = eval_pass_rate * 0.85); a model that ties sonnet on the eval is placed at sonnet, never above (the v1 toy-bug set cannot establish superiority over frontier). The full curated lineup with weekly refresh and provider-reliability data is available via the live feed (MODELMELD_REGISTRY_FEED_URL + license key). See docs/registry-feed.md.",
   "task_categories": [
     "coding",
     "reasoning",
@@ -17,8 +17,9 @@
       "context_window": 128000,
       "cost_per_m_input": 0.66,
       "cost_per_m_output": 1.0,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.0},
+      "supports_tools": false,
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "llama-3.3-70b-instruct",
@@ -27,8 +28,8 @@
       "context_window": 131072,
       "cost_per_m_input": 1.04,
       "cost_per_m_output": 1.04,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.3},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "llama-3.3-70b-instruct",
@@ -37,8 +38,8 @@
       "context_window": 131072,
       "cost_per_m_input": 0.1,
       "cost_per_m_output": 0.32,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.81},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "deepseek-v4-pro",
@@ -57,8 +58,8 @@
       "context_window": 512000,
       "cost_per_m_input": 2.1,
       "cost_per_m_output": 4.4,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "deepseek-v4-pro",
@@ -67,8 +68,8 @@
       "context_window": 1048576,
       "cost_per_m_input": 0.44,
       "cost_per_m_output": 0.87,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "gpt-oss-120b",
@@ -77,8 +78,8 @@
       "context_window": 131072,
       "cost_per_m_input": 0.5,
       "cost_per_m_output": 0.5,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.09},
+      "source": "modelmeld_tool_eval_v1_2026_06_07_inferred"
     },
     {
       "model_id": "gpt-oss-120b",
@@ -87,8 +88,8 @@
       "context_window": 131072,
       "cost_per_m_input": 0.15,
       "cost_per_m_output": 0.6,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.09},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "gpt-oss-120b",
@@ -97,8 +98,8 @@
       "context_window": 131072,
       "cost_per_m_input": 0.04,
       "cost_per_m_output": 0.18,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.09},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "kimi-k2.6",
@@ -107,8 +108,8 @@
       "context_window": 262144,
       "cost_per_m_input": 0.6,
       "cost_per_m_output": 0.6,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "kimi-k2.6",
@@ -117,8 +118,8 @@
       "context_window": 262144,
       "cost_per_m_input": 1.2,
       "cost_per_m_output": 4.5,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "phi-4",
@@ -127,8 +128,9 @@
       "context_window": 16384,
       "cost_per_m_input": 0.07,
       "cost_per_m_output": 0.14,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.0},
+      "supports_tools": false,
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
       "model_id": "qwen3-coder-next",
@@ -137,8 +139,8 @@
       "context_window": 262144,
       "cost_per_m_input": 0.11,
       "cost_per_m_output": 0.8,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_07"
     }
   ]
 }
