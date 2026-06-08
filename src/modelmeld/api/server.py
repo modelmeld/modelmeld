@@ -25,7 +25,8 @@ from modelmeld.memory import (
 )
 from modelmeld.privacy import Scrubber, build_scrubber
 from modelmeld.router import Router, SingleAdapterRouter, build_router
-from modelmeld.scout import ModelRegistry, Scout, build_scout, default_registry
+from modelmeld.scout import ModelRegistry, Scout, build_scout
+from modelmeld.scout.multi_provider_registry import default_multi_provider_registry
 from modelmeld.tokens import TokenCounter, build_token_counter
 
 
@@ -85,7 +86,15 @@ def build_app(
     # Allow explicit None to disable scrubbing in tests.
     app.state.scrubber = scrubber if scrubber is not None else build_scrubber(app.state.settings)
     app.state.hooks = hooks or HookRegistry()
-    app.state.model_registry = model_registry or default_registry()
+    # Default to the MULTI-provider registry (base + default_overlay) so the
+    # cloud OSS provider rows (fireworks/together/openrouter) are actually
+    # routable. Defaulting to the base registry here left OSS models only on
+    # their unreachable `vllm` rows, so capability routing saw no eligible OSS
+    # provider and fell back to frontier (-auto→Haiku) or 400'd (-saver). The
+    # multi-provider registry is a ModelRegistry subclass and the header
+    # resolvers already prefer its `all_entries_multi`, so this is strictly
+    # more correct for every consumer.
+    app.state.model_registry = model_registry or default_multi_provider_registry()
     # Tiered memory. Default: in-process backend for dev/tests; operators can
     # opt into a SQL-backed store with MODELMELD_MEMORY_BACKEND=postgres.
     if memory_store is not None:

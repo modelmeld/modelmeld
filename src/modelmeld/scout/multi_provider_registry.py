@@ -223,10 +223,16 @@ class MultiProviderModelRegistry(ModelRegistry):
         overlay_entries: list[ModelEntry] = []
         for row in overlay_payload.get("models", []):
             model_id = row["model_id"]
-            # Inherit task_scores: overlay row's own scores take
-            # precedence; otherwise inherit from base by model_id.
+            # Merge task_scores: start from the base entry's scores (by
+            # model_id) and let the overlay row OVERRIDE per-key. This lets a
+            # row supply a measured per-(model, provider) score (e.g. a
+            # tool_use score from the eval harness) without dropping the other
+            # categories it would otherwise inherit from base — a bare
+            # {"tool_use": x} row previously REPLACED all inherited scores,
+            # silently zeroing coding/reasoning for that row.
+            base_scores = scores_by_model.get(model_id, {})
             row_scores = dict(row.get("task_scores", {}))
-            scores = row_scores if row_scores else scores_by_model.get(model_id, {})
+            scores = {**base_scores, **row_scores}
             if not scores:
                 logger.warning(
                     "default_overlay: no task_scores available for %s "

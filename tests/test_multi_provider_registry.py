@@ -263,15 +263,52 @@ def test_load_default_overlay_models_have_multiple_providers() -> None:
 
 
 def test_load_default_overlay_task_scores_inherit_from_base() -> None:
-    """Overlay rows with empty task_scores inherit from base by model_id."""
+    """Overlay rows with empty task_scores inherit fully from base by model_id."""
     reg = MultiProviderModelRegistry.load_default()
-    # qwen3-coder-next@openrouter should inherit task_scores from the base
-    # qwen3-coder-next@vllm entry (overlay JSON has empty task_scores).
-    overlay_entry = reg.get_by_key("qwen3-coder-next", "openrouter")
-    base_entry = reg.get_by_key("qwen3-coder-next", "vllm")
+    # deepseek-v4-pro@fireworks has empty task_scores in the overlay JSON
+    # (eval was rate-limited there), so it inherits base scores wholesale.
+    overlay_entry = reg.get_by_key("deepseek-v4-pro", "fireworks")
+    base_entry = reg.get_by_key("deepseek-v4-pro", "vllm")
     assert overlay_entry is not None
     assert base_entry is not None
     assert overlay_entry.task_scores == base_entry.task_scores
+
+
+def test_load_default_overlay_task_scores_merge_over_base() -> None:
+    """A row's task_scores OVERRIDE base per-key; unspecified categories inherit.
+
+    Regression for the merge-semantics fix: a bare {"tool_use": x} row used to
+    REPLACE all inherited scores, silently zeroing coding/reasoning for that
+    (model, provider). It must now merge over base instead.
+    """
+    reg = MultiProviderModelRegistry.load_default()
+    # qwen3-coder-next@openrouter overrides tool_use (measured 0.85) but must
+    # still inherit coding/reasoning/etc from the base qwen3-coder-next@vllm.
+    overlay_entry = reg.get_by_key("qwen3-coder-next", "openrouter")
+    base_entry = reg.get_by_key("qwen3-coder-next", "vllm")
+    assert overlay_entry is not None and base_entry is not None
+    assert overlay_entry.task_scores["tool_use"] == 0.85  # overridden by measurement
+    assert overlay_entry.task_scores["tool_use"] != base_entry.task_scores["tool_use"]
+    assert overlay_entry.task_scores["coding"] == base_entry.task_scores["coding"]  # inherited
+    assert overlay_entry.task_scores["reasoning"] == base_entry.task_scores["reasoning"]
+
+
+def test_tool_use_routing_keeps_agentic_off_gpt_oss() -> None:
+    """Regression for the measured-overlay correction: agentic (tool_use) routing
+    must NOT land on gpt-oss-120b (measured ~0.1 on the eval) just because an
+    estimate said 0.8. Demoted below threshold on every hosted provider; the
+    pick goes to a model that actually passed the eval."""
+    reg = MultiProviderModelRegistry.load_default()
+    hosted = frozenset({"fireworks", "together", "openrouter"})
+    pick = reg.pick(
+        "tool_use", quality_threshold=0.80,
+        require_tool_support=True, eligible_providers=hosted,
+    )
+    assert pick is not None
+    assert pick.model_id != "gpt-oss-120b"
+    for entry in reg.all_entries_multi():
+        if entry.model_id == "gpt-oss-120b" and entry.provider in hosted:
+            assert entry.task_scores["tool_use"] < 0.80
 
 
 def test_load_default_overlay_supports_tools_inherits_from_base() -> None:
