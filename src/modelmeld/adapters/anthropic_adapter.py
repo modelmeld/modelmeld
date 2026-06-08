@@ -310,6 +310,17 @@ class AnthropicAdapter(ProviderAdapter):
             elif params.get("model") is None:
                 # Defense in depth — Anthropic SDK requires `model`.
                 params["model"] = request.model
+            # Fields the client sent that aren't declared on our schema
+            # (extra="allow") — e.g. Claude Code's `context_management` — are NOT
+            # valid keyword args for the SDK's create(); passing them raises
+            # "unexpected keyword argument". Route them through `extra_body` so
+            # the SDK still forwards them to the API verbatim (passthrough
+            # intent preserved) without choking on unknown kwargs.
+            extras = dict(native_request.model_extra or {})
+            if extras:
+                for key in extras:
+                    params.pop(key, None)
+                params["extra_body"] = {**(params.get("extra_body") or {}), **extras}
             return params
         # Translation path (the existing /v1/chat/completions behavior).
         request = self._apply_served_model(request)

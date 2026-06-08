@@ -452,6 +452,41 @@ async def test_chat_preserves_cache_control_when_native_request_supplied() -> No
     assert first_user_content[0]["cache_control"] == {"type": "ephemeral"}
 
 
+async def test_native_passthrough_routes_unknown_fields_to_extra_body() -> None:
+    """Fields the client sends that aren't on our schema (extra="allow") — e.g.
+    Claude Code's `context_management` — must go via `extra_body`, not as
+    top-level kwargs the SDK rejects ("unexpected keyword argument"). Regression
+    for the streaming 502 the dogfooding loop surfaced.
+    """
+    from modelmeld.api.schemas_anthropic import AnthropicMessagesRequest
+
+    body = AnthropicMessagesRequest.model_validate({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 64,
+        "messages": [{"role": "user", "content": "hi"}],
+        "context_management": {"edits": [{"type": "clear_tool_uses_20250919"}]},
+    })
+    adapter = AnthropicAdapter(api_key="test-key")
+    mock_create = AsyncMock(return_value=_fake_sdk_message())
+    adapter._client.messages.create = mock_create  # type: ignore[method-assign]
+
+    await adapter.chat(
+        ChatCompletionRequest(
+            model="claude-sonnet-4-6",
+            messages=[{"role": "user", "content": "ignored"}],
+        ),
+        native_request=body,
+    )
+
+    call_kwargs = mock_create.call_args.kwargs
+    # Not a top-level kwarg (that's what raised the SDK TypeError) ...
+    assert "context_management" not in call_kwargs
+    # ... forwarded via extra_body instead, preserving passthrough intent.
+    assert call_kwargs["extra_body"]["context_management"] == {
+        "edits": [{"type": "clear_tool_uses_20250919"}]
+    }
+
+
 async def test_chat_falls_back_to_translation_when_no_native_request() -> None:
     """/v1/chat/completions callers don't supply native_request; the adapter
     must still work via the translation path (existing behavior unchanged).
