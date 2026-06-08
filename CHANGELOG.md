@@ -14,6 +14,32 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.12.0](https://github.com/modelmeld/modelmeld/compare/v0.11.0...v0.12.0) (2026-06-08)
+
+
+### Features
+
+* **observability:** opt-in routing-rationale debug header ([#63](https://github.com/modelmeld/modelmeld/issues/63)) ([e5b7e56](https://github.com/modelmeld/modelmeld/commit/e5b7e567a8c53bab56fbadc0073f85f676b14143))
+
+
+### Bug Fixes
+
+* **anthropic:** drop client thinking config on model substitution ([#66](https://github.com/modelmeld/modelmeld/issues/66)) ([f80e4de](https://github.com/modelmeld/modelmeld/commit/f80e4dec006390b5786531e57650a6c26ddcbc83))
+* **anthropic:** hoist system-role messages to top-level system in passthrough ([#70](https://github.com/modelmeld/modelmeld/issues/70)) ([a9ad579](https://github.com/modelmeld/modelmeld/commit/a9ad57930337423f10bec2e37237989fef061959))
+* **anthropic:** route unknown native fields via extra_body, not kwargs ([#65](https://github.com/modelmeld/modelmeld/issues/65)) ([5d79f8c](https://github.com/modelmeld/modelmeld/commit/5d79f8c3b3008867b04d09e4bd6565c9e6130dc5))
+* **api:** coerce routing-header values to latin-1 to avoid 500 ([#72](https://github.com/modelmeld/modelmeld/issues/72)) ([ea73016](https://github.com/modelmeld/modelmeld/commit/ea7301642f365a9f13577ece77c7e63b0d215bdd))
+* **messages:** accept system-role messages in the array, hoist to system ([#64](https://github.com/modelmeld/modelmeld/issues/64)) ([8e99e9e](https://github.com/modelmeld/modelmeld/commit/8e99e9ec4a31acb4408367bbd7df23e39fa079fe))
+* **messages:** drop client 'effort' too on model substitution ([#68](https://github.com/modelmeld/modelmeld/issues/68)) ([a221a93](https://github.com/modelmeld/modelmeld/commit/a221a93cae7449cf52f419ce6fb4bed6621812e1))
+* **messages:** drop client thinking at the route on model substitution ([#67](https://github.com/modelmeld/modelmeld/issues/67)) ([c0dd6b3](https://github.com/modelmeld/modelmeld/commit/c0dd6b39d080161fa29b2b20c902056806a66ea4))
+* **messages:** drop context_management with the thinking cluster on substitution ([#71](https://github.com/modelmeld/modelmeld/issues/71)) ([312b005](https://github.com/modelmeld/modelmeld/commit/312b0054d16dbf132ddea506c5b240389bc89f41))
+* **messages:** strip output_config (nested effort) on model substitution ([#69](https://github.com/modelmeld/modelmeld/issues/69)) ([ee51d24](https://github.com/modelmeld/modelmeld/commit/ee51d24c207e695c34b4d2bdb2ae19603754d313))
+* **routing:** load multi-provider overlay so cloud OSS providers are routable ([#73](https://github.com/modelmeld/modelmeld/issues/73)) ([eaefb1b](https://github.com/modelmeld/modelmeld/commit/eaefb1b8b1daf08a809e64c14ef993128187f43e))
+
+
+### Documentation
+
+* add llms.txt and AGENTS.md for AI-agent readers ([#61](https://github.com/modelmeld/modelmeld/issues/61)) ([481fecf](https://github.com/modelmeld/modelmeld/commit/481fecf91c684e06cad0ae941058d5a26415813e))
+
 ## [0.11.0](https://github.com/modelmeld/modelmeld/compare/v0.10.3...v0.11.0) (2026-06-07)
 
 
