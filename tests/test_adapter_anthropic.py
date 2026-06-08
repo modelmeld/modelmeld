@@ -487,6 +487,63 @@ async def test_native_passthrough_routes_unknown_fields_to_extra_body() -> None:
     }
 
 
+async def test_thinking_dropped_when_model_substituted() -> None:
+    """Capability/alias routing serves a different model than the client asked
+    for. Client `thinking` config is tuned for the requested model and may be
+    unsupported on the routed one ("adaptive thinking is not supported on this
+    model"), so it's dropped on substitution. Regression for the loop's 400.
+    """
+    from modelmeld.api.schemas_anthropic import AnthropicMessagesRequest
+
+    body = AnthropicMessagesRequest.model_validate({
+        "model": "anthropic/modelmeld-auto",   # alias the client requested
+        "max_tokens": 64,
+        "messages": [{"role": "user", "content": "hi"}],
+        "thinking": {"type": "adaptive"},
+    })
+    adapter = AnthropicAdapter(api_key="test-key")
+    mock_create = AsyncMock(return_value=_fake_sdk_message())
+    adapter._client.messages.create = mock_create  # type: ignore[method-assign]
+
+    await adapter.chat(
+        ChatCompletionRequest(  # routing substituted the model
+            model="claude-sonnet-4-6", messages=[{"role": "user", "content": "x"}],
+        ),
+        native_request=body,
+    )
+
+    ck = mock_create.call_args.kwargs
+    assert "thinking" not in ck
+    assert "thinking" not in (ck.get("extra_body") or {})
+
+
+async def test_thinking_preserved_when_no_substitution() -> None:
+    """When the served model equals what the client requested (no substitution),
+    the client's thinking config is forwarded verbatim via extra_body."""
+    from modelmeld.api.schemas_anthropic import AnthropicMessagesRequest
+
+    thinking = {"type": "enabled", "budget_tokens": 1024}
+    body = AnthropicMessagesRequest.model_validate({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 64,
+        "messages": [{"role": "user", "content": "hi"}],
+        "thinking": thinking,
+    })
+    adapter = AnthropicAdapter(api_key="test-key")
+    mock_create = AsyncMock(return_value=_fake_sdk_message())
+    adapter._client.messages.create = mock_create  # type: ignore[method-assign]
+
+    await adapter.chat(
+        ChatCompletionRequest(
+            model="claude-sonnet-4-6", messages=[{"role": "user", "content": "x"}],
+        ),
+        native_request=body,
+    )
+
+    ck = mock_create.call_args.kwargs
+    assert (ck.get("extra_body") or {}).get("thinking") == thinking
+
+
 async def test_chat_falls_back_to_translation_when_no_native_request() -> None:
     """/v1/chat/completions callers don't supply native_request; the adapter
     must still work via the translation path (existing behavior unchanged).

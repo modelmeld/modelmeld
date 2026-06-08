@@ -310,13 +310,23 @@ class AnthropicAdapter(ProviderAdapter):
             elif params.get("model") is None:
                 # Defense in depth — Anthropic SDK requires `model`.
                 params["model"] = request.model
+            extras = dict(native_request.model_extra or {})
+            # Model substitution: capability/alias routing rewrote the internal
+            # request.model to the scout's pick, while native_request.model is
+            # still what the client asked for. When they differ, drop client
+            # `thinking` config — it was tuned for the requested model and may be
+            # unsupported on the one we routed to (Anthropic 400 "adaptive
+            # thinking is not supported on this model"). See projectplan backlog
+            # B-3 for the capability-aware refinement (forward when supported).
+            if request.model and native_request.model != request.model:
+                params.pop("thinking", None)
+                extras.pop("thinking", None)
             # Fields the client sent that aren't declared on our schema
             # (extra="allow") — e.g. Claude Code's `context_management` — are NOT
             # valid keyword args for the SDK's create(); passing them raises
             # "unexpected keyword argument". Route them through `extra_body` so
             # the SDK still forwards them to the API verbatim (passthrough
             # intent preserved) without choking on unknown kwargs.
-            extras = dict(native_request.model_extra or {})
             if extras:
                 for key in extras:
                     params.pop(key, None)
