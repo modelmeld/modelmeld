@@ -175,7 +175,11 @@ def _collect_oauth_camouflage_headers(
 # by Claude Code's beta endpoint tuned for the model it asked for. Dropped on
 # substitution; forwarded verbatim when there's none. B-3 (capability-aware
 # gating) is the real fix: forward each when the routed model supports it.
-_MODEL_TUNED_FIELDS = ("thinking", "effort")
+#
+# `output_config` is the wrapper Claude Code nests `effort` inside (top-level
+# `effort` is null; the param lives at output_config.effort), so the whole
+# object is dropped on substitution — confirmed via request-shape capture.
+_MODEL_TUNED_FIELDS = ("thinking", "effort", "output_config")
 
 
 def _native_body_for_upstream(

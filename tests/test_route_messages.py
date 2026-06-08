@@ -986,16 +986,18 @@ def test_native_body_drops_thinking_on_substitution() -> None:
         "max_tokens": 64,
         "messages": [{"role": "user", "content": "hi"}],
         "thinking": {"type": "adaptive"},
-        "effort": "high",
+        # Claude Code nests `effort` inside output_config (top-level effort is
+        # null) — captured from a real request via the proxy request-shape log.
+        "output_config": {"effort": "high"},
     })
     out = _native_body_for_upstream(body, "claude-sonnet-4-6")
     assert out.model == "claude-sonnet-4-6"
-    # Both model-tuned controls dropped (each 400'd on the substituted model).
+    # All model-tuned controls dropped (each 400'd on the substituted model).
     assert "thinking" not in (out.model_extra or {})
-    assert "effort" not in (out.model_extra or {})
+    assert "output_config" not in (out.model_extra or {})
     # Original body untouched (no mutation of the caller's object).
     assert (body.model_extra or {}).get("thinking") == {"type": "adaptive"}
-    assert (body.model_extra or {}).get("effort") == "high"
+    assert (body.model_extra or {}).get("output_config") == {"effort": "high"}
 
 
 def test_native_body_preserves_thinking_when_no_substitution() -> None:
