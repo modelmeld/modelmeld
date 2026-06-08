@@ -1004,6 +1004,15 @@ def _canonical_model_id_for_header(
     return served_model_id
 
 
+def _latin1_safe(value: str) -> str:
+    """HTTP header values must be latin-1-encodable; any other character makes
+    Starlette raise UnicodeEncodeError → 500. Routing-header values can contain
+    non-latin-1 chars (e.g. a `→` in the free-form routing rationale), so coerce
+    every value to latin-1, replacing what doesn't fit. Cheap no-op for ASCII.
+    """
+    return value.encode("latin-1", "replace").decode("latin-1")
+
+
 def _routing_headers(
     decision: RoutingDecision,
     redactions: list[Redaction],
@@ -1072,4 +1081,6 @@ def _routing_headers(
         )
     if failover_from is not None:
         headers["x-modelmeld-failover-from"] = str(failover_from)
-    return headers
+    # Every value must be latin-1-encodable or Starlette 500s when it sets the
+    # header (the rationale header can carry a `→`, etc.).
+    return {k: _latin1_safe(v) for k, v in headers.items()}
