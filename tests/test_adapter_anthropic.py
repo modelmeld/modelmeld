@@ -544,6 +544,46 @@ async def test_thinking_preserved_when_no_substitution() -> None:
     assert (ck.get("extra_body") or {}).get("thinking") == thinking
 
 
+async def test_native_passthrough_hoists_system_messages_to_top_level() -> None:
+    """Anthropic rejects role:"system" in messages[] ("role 'system' is not
+    supported on this model"); native passthrough hoists them into the
+    top-level system field, preserving the existing system. Regression for the
+    loop's 400.
+    """
+    from modelmeld.api.schemas_anthropic import AnthropicMessagesRequest
+
+    body = AnthropicMessagesRequest.model_validate({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 64,
+        "system": "Base system.",
+        "messages": [
+            {"role": "user", "content": "hi"},
+            {"role": "system", "content": "Mid-convo system note."},
+        ],
+    })
+    adapter = AnthropicAdapter(api_key="test-key")
+    mock_create = AsyncMock(return_value=_fake_sdk_message())
+    adapter._client.messages.create = mock_create  # type: ignore[method-assign]
+
+    await adapter.chat(
+        ChatCompletionRequest(
+            model="claude-sonnet-4-6", messages=[{"role": "user", "content": "x"}],
+        ),
+        native_request=body,
+    )
+
+    ck = mock_create.call_args.kwargs
+    # No system-role message left in the array.
+    assert all(m.get("role") != "system" for m in ck["messages"])
+    # Hoisted text merged into the top-level system, original preserved.
+    sys = ck["system"]
+    sys_text = sys if isinstance(sys, str) else " ".join(
+        b.get("text", "") for b in sys
+    )
+    assert "Base system." in sys_text
+    assert "Mid-convo system note." in sys_text
+
+
 async def test_chat_falls_back_to_translation_when_no_native_request() -> None:
     """/v1/chat/completions callers don't supply native_request; the adapter
     must still work via the translation path (existing behavior unchanged).
