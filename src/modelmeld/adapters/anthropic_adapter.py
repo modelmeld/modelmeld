@@ -37,6 +37,54 @@ _ANTHROPIC_API_VERSION = "2023-06-01"
 _DEFAULT_BASE_URL = "https://api.anthropic.com"
 
 
+def _block_text(content: object) -> str:
+    """Flatten a message content (str or list of blocks) to its text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
+    return ""
+
+
+def _hoist_system_messages(params: dict) -> None:
+    """Move any `role: "system"` entries out of `messages[]` into the top-level
+    `system` field, in place.
+
+    Anthropic's API rejects system-role messages in the array ("role 'system'
+    is not supported on this model") — system must be top-level. Real clients
+    (Claude Code) put system-role messages in the array, and native passthrough
+    forwards them verbatim, so hoist them here. The existing top-level `system`
+    is preserved structurally (incl. cache_control on its blocks); hoisted text
+    is appended.
+    """
+    msgs = params.get("messages")
+    if not isinstance(msgs, list):
+        return
+    hoisted: list[str] = []
+    kept: list = []
+    for m in msgs:
+        if isinstance(m, dict) and m.get("role") == "system":
+            text = _block_text(m.get("content"))
+            if text:
+                hoisted.append(text)
+        else:
+            kept.append(m)
+    if not hoisted:
+        return
+    params["messages"] = kept
+    existing = params.get("system")
+    if existing is None:
+        params["system"] = "\n\n".join(hoisted)
+    elif isinstance(existing, str):
+        params["system"] = "\n\n".join([existing, *hoisted])
+    elif isinstance(existing, list):
+        # Append as text blocks; existing blocks (with any cache_control) intact.
+        params["system"] = [*existing, *({"type": "text", "text": t} for t in hoisted)]
+
+
 class AnthropicAdapter(ProviderAdapter):
     name = "anthropic"
     is_egress = True
@@ -331,6 +379,7 @@ class AnthropicAdapter(ProviderAdapter):
                 for key in extras:
                     params.pop(key, None)
                 params["extra_body"] = {**(params.get("extra_body") or {}), **extras}
+            _hoist_system_messages(params)
             return params
         # Translation path (the existing /v1/chat/completions behavior).
         request = self._apply_served_model(request)
