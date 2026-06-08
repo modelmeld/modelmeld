@@ -553,6 +553,17 @@ def _anthropic_message_to_openai(msg: AnthropicMessage) -> list[Message]:
         return _anthropic_user_to_openai(msg)
     if msg.role == "assistant":
         return [_anthropic_assistant_to_openai(msg)]
+    if msg.role == "system":
+        # Non-standard for Anthropic's own API, but real clients (Claude Code
+        # headless) send it. Hoist to a SystemMessage; the egress translator
+        # folds all SystemMessages back into the top-level system prompt.
+        if isinstance(msg.content, str):
+            text = msg.content
+        else:
+            text = "\n".join(
+                t for b in msg.content if (t := getattr(b, "text", ""))
+            )
+        return [SystemMessage(role="system", content=text)]
     # Pydantic literal validation should prevent reaching here.
     raise TranslationError(f"Unsupported message role: {msg.role!r}")
 

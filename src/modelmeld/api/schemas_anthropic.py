@@ -118,9 +118,15 @@ AnthropicResponseContentBlock = Annotated[
 # ---------------------------------------------------------------------------
 
 class AnthropicMessage(BaseModel):
-    """A single message in the conversation history."""
+    """A single message in the conversation history.
+
+    Anthropic's own API restricts `messages[].role` to user/assistant (system
+    is a top-level field). But real clients — notably Claude Code in headless
+    (`-p`) mode — put a `system`-role message in the array. We accept it and
+    hoist it to the system prompt during translation rather than 422 the
+    request (see `from_anthropic_request`)."""
     model_config = ConfigDict(extra="allow")
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "system"]
     content: str | list[AnthropicRequestContentBlock]
 
 
