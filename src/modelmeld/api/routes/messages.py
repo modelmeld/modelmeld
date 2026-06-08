@@ -169,18 +169,25 @@ def _collect_oauth_camouflage_headers(
     return out
 
 
+# Client-specified, model-tuned controls that don't transfer across a model
+# substitution: the routed model may reject them (Anthropic 400 "… is not
+# supported on this model" / "does not support the … parameter"). They're sent
+# by Claude Code's beta endpoint tuned for the model it asked for. Dropped on
+# substitution; forwarded verbatim when there's none. B-3 (capability-aware
+# gating) is the real fix: forward each when the routed model supports it.
+_MODEL_TUNED_FIELDS = ("thinking", "effort")
+
+
 def _native_body_for_upstream(
     body: AnthropicMessagesRequest, served_model: str | None,
 ) -> AnthropicMessagesRequest:
     """Build the native Anthropic body to send upstream.
 
     When capability/alias routing serves a model different from what the client
-    requested, pin the body's `model` to the served pick AND drop the client's
-    `thinking` config — it was tuned for the requested model and may be
-    unsupported on the one we route to (Anthropic 400 "adaptive thinking is not
-    supported on this model"). No substitution → return `body` unchanged so
-    `thinking` (and everything else, incl. cache_control) passes through
-    verbatim. Capability-aware gating is tracked as projectplan B-3.
+    requested, pin the body's `model` to the served pick AND drop client
+    model-tuned controls (`_MODEL_TUNED_FIELDS`) the routed model may reject. No
+    substitution → return `body` unchanged so those controls (and everything
+    else, incl. cache_control) pass through verbatim.
 
     The drop must happen here, not in the adapter: the adapter receives a body
     whose `model` is already rewritten to the served pick, so it can no longer
@@ -190,12 +197,12 @@ def _native_body_for_upstream(
         return body
     native_body = body.model_copy(update={"model": served_model})
     extra = native_body.model_extra
-    if isinstance(extra, dict) and "thinking" in extra:
+    if isinstance(extra, dict) and any(f in extra for f in _MODEL_TUNED_FIELDS):
         # Replace (not mutate) the extra dict so the original body is untouched.
         object.__setattr__(
             native_body,
             "__pydantic_extra__",
-            {k: v for k, v in extra.items() if k != "thinking"},
+            {k: v for k, v in extra.items() if k not in _MODEL_TUNED_FIELDS},
         )
     return native_body
 
