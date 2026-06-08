@@ -62,6 +62,23 @@ def test_minimal_request_round_trips_through_translation() -> None:
     assert user.content == "Hello"
 
 
+def test_system_role_message_in_array_is_hoisted() -> None:
+    # Claude Code headless (`-p`) puts a system-role message in messages[].
+    # Anthropic's own API forbids it, but we accept it (constructing this
+    # request used to raise a pydantic ValidationError → 422 on the route) and
+    # hoist it to a SystemMessage rather than reject the request.
+    req = AnthropicMessagesRequest(
+        model="m", max_tokens=64,
+        messages=[
+            AnthropicMessage(role="user", content="hi"),
+            AnthropicMessage(role="system", content="Be terse."),
+        ],
+    )
+    out = from_anthropic_request(req)
+    systems = [m for m in out.messages if isinstance(m, SystemMessage)]
+    assert any(m.content == "Be terse." for m in systems)
+
+
 def test_top_level_scalars_pass_through() -> None:
     req = AnthropicMessagesRequest(
         model="m", max_tokens=10,
