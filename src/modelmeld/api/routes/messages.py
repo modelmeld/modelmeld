@@ -176,10 +176,13 @@ def _collect_oauth_camouflage_headers(
 # substitution; forwarded verbatim when there's none. B-3 (capability-aware
 # gating) is the real fix: forward each when the routed model supports it.
 #
+# These form an INTERDEPENDENT cluster and must be dropped atomically — e.g.
+# `context_management`'s `clear_thinking_*` strategy requires `thinking` to be
+# enabled, so dropping `thinking` while keeping `context_management` yields an
+# incoherent request (400 "clear_thinking strategy requires thinking …").
 # `output_config` is the wrapper Claude Code nests `effort` inside (top-level
-# `effort` is null; the param lives at output_config.effort), so the whole
-# object is dropped on substitution — confirmed via request-shape capture.
-_MODEL_TUNED_FIELDS = ("thinking", "effort", "output_config")
+# `effort` is null). All confirmed via request-shape capture from the loop.
+_MODEL_TUNED_FIELDS = ("thinking", "effort", "output_config", "context_management")
 
 
 def _native_body_for_upstream(
