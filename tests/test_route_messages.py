@@ -989,15 +989,20 @@ def test_native_body_drops_thinking_on_substitution() -> None:
         # Claude Code nests `effort` inside output_config (top-level effort is
         # null) — captured from a real request via the proxy request-shape log.
         "output_config": {"effort": "high"},
+        # Coupled to thinking: clear_thinking requires thinking to exist, so it
+        # must be dropped atomically with thinking, not left dangling.
+        "context_management": {"edits": [{"type": "clear_thinking_20251015"}]},
     })
     out = _native_body_for_upstream(body, "claude-sonnet-4-6")
     assert out.model == "claude-sonnet-4-6"
-    # All model-tuned controls dropped (each 400'd on the substituted model).
-    assert "thinking" not in (out.model_extra or {})
-    assert "output_config" not in (out.model_extra or {})
+    # The whole interdependent cluster is dropped on substitution.
+    extra = out.model_extra or {}
+    assert "thinking" not in extra
+    assert "output_config" not in extra
+    assert "context_management" not in extra
     # Original body untouched (no mutation of the caller's object).
     assert (body.model_extra or {}).get("thinking") == {"type": "adaptive"}
-    assert (body.model_extra or {}).get("output_config") == {"effort": "high"}
+    assert (body.model_extra or {}).get("context_management") is not None
 
 
 def test_native_body_preserves_thinking_when_no_substitution() -> None:
