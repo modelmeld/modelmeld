@@ -62,11 +62,14 @@ def test_minimal_request_round_trips_through_translation() -> None:
     assert user.content == "Hello"
 
 
-def test_system_role_message_in_array_is_hoisted() -> None:
+def test_system_role_message_in_array_is_hoisted_to_front() -> None:
     # Claude Code headless (`-p`) puts a system-role message in messages[].
     # Anthropic's own API forbids it, but we accept it (constructing this
-    # request used to raise a pydantic ValidationError → 422 on the route) and
-    # hoist it to a SystemMessage rather than reject the request.
+    # request used to raise a pydantic ValidationError → 422 on the route).
+    # We do NOT leave it mid-array: the OpenAI Chat Completions contract puts
+    # system at position 0, and strict OpenAI-compatible backends reject a
+    # system message at any other position as "invalid messages". Coalesce it
+    # to a single leading SystemMessage.
     req = AnthropicMessagesRequest(
         model="m", max_tokens=64,
         messages=[
@@ -76,7 +79,13 @@ def test_system_role_message_in_array_is_hoisted() -> None:
     )
     out = from_anthropic_request(req)
     systems = [m for m in out.messages if isinstance(m, SystemMessage)]
-    assert any(m.content == "Be terse." for m in systems)
+    assert len(systems) == 1
+    assert isinstance(out.messages[0], SystemMessage)
+    assert out.messages[0].content == "Be terse."
+    # No system message survives anywhere but position 0.
+    assert all(
+        not isinstance(m, SystemMessage) for m in out.messages[1:]
+    )
 
 
 def test_top_level_scalars_pass_through() -> None:
@@ -432,7 +441,12 @@ def test_user_message_mixed_tool_result_and_text_splits_into_multiple_messages()
     assert out.messages[2].content == "Now continue."
 
 
-def test_user_message_text_before_tool_result_preserves_order() -> None:
+def test_user_message_text_before_tool_result_emits_tool_first() -> None:
+    """A tool_result must immediately follow the assistant tool_calls turn that
+    called it. Even when the client orders a text block BEFORE the tool_result
+    in the same user turn, we emit the ToolMessage first and push the user text
+    to a trailing UserMessage — otherwise strict OpenAI-compatible backends
+    reject the wedged user message as "invalid messages"."""
     req = AnthropicMessagesRequest(
         model="m", max_tokens=10,
         messages=[AnthropicMessage(role="user", content=[
@@ -443,9 +457,10 @@ def test_user_message_text_before_tool_result_preserves_order() -> None:
     )
     out = from_anthropic_request(req)
     assert len(out.messages) == 2
-    assert isinstance(out.messages[0], UserMessage)
-    assert out.messages[0].content == "About to send tool result."
-    assert isinstance(out.messages[1], ToolMessage)
+    assert isinstance(out.messages[0], ToolMessage)
+    assert out.messages[0].tool_call_id == "tu_x"
+    assert isinstance(out.messages[1], UserMessage)
+    assert out.messages[1].content == "About to send tool result."
 
 
 def test_user_message_with_tool_use_block_raises() -> None:
@@ -614,3 +629,113 @@ def test_realistic_claude_code_multi_turn_with_tool_use() -> None:
     # Tools propagated correctly
     assert out.tools is not None and len(out.tools) == 1
     assert out.tools[0].function.name == "read_file"
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-compatible message-ordering invariants
+#
+# Strict OpenAI-compatible backends reject agentic transcripts with a
+# 400 "invalid messages" when the translated array places a system message
+# mid-conversation, or wedges a user message between an assistant tool_calls
+# turn and its tool_result. Both shapes arise from real Claude Code traffic.
+# These assert the array we hand to an OpenAI-compatible egress is well-formed.
+# ---------------------------------------------------------------------------
+
+def _assert_openai_ordering_invariants(messages: list) -> None:
+    """A system message may only appear at position 0, and every ToolMessage
+    must immediately follow an AssistantMessage with tool_calls or another
+    ToolMessage (the contiguous tool-reply block)."""
+    for i, m in enumerate(messages):
+        if isinstance(m, SystemMessage):
+            assert i == 0, f"system message at index {i}, must be position 0"
+        if isinstance(m, ToolMessage):
+            assert i > 0, "tool message cannot be the first message"
+            prev = messages[i - 1]
+            ok = (
+                isinstance(prev, ToolMessage)
+                or (isinstance(prev, AssistantMessage) and prev.tool_calls)
+            )
+            assert ok, (
+                f"tool message at index {i} not adjacent to an assistant "
+                f"tool_calls turn (prev={type(prev).__name__})"
+            )
+
+
+def test_mid_conversation_system_message_does_not_break_ordering() -> None:
+    """Claude Code injects a role:system reminder mid-conversation. It must be
+    folded into the leading system message, not emitted mid-array."""
+    req = AnthropicMessagesRequest(
+        model="m", max_tokens=1024,
+        system="You are a coding agent.",
+        tools=[AnthropicToolDef(
+            name="run_tests", description="run tests", input_schema={"type": "object"},
+        )],
+        messages=[
+            AnthropicMessage(role="user", content="Fix the failing test."),
+            AnthropicMessage(role="assistant", content=[
+                {"type": "tool_use", "id": "tu_1",  # type: ignore[list-item]
+                 "name": "run_tests", "input": {}},
+            ]),
+            AnthropicMessage(role="user", content=[
+                {"type": "tool_result", "tool_use_id": "tu_1",  # type: ignore[list-item]
+                 "content": "1 failed"},
+            ]),
+            AnthropicMessage(role="system", content="<reminder>Stay on task.</reminder>"),
+            AnthropicMessage(role="user", content="continue"),
+        ],
+    )
+    out = from_anthropic_request(req)
+    _assert_openai_ordering_invariants(out.messages)
+    # The mid-array reminder is merged into the single leading system message.
+    systems = [m for m in out.messages if isinstance(m, SystemMessage)]
+    assert len(systems) == 1
+    assert "You are a coding agent." in systems[0].content
+    assert "<reminder>Stay on task.</reminder>" in systems[0].content
+
+
+def test_multiple_system_fragments_merge_top_level_first() -> None:
+    """Top-level `system` + an in-array system message merge into one leading
+    SystemMessage, top-level fragment first, joined with a blank line."""
+    req = AnthropicMessagesRequest(
+        model="m", max_tokens=64,
+        system="Top-level instructions.",
+        messages=[
+            AnthropicMessage(role="user", content="hi"),
+            AnthropicMessage(role="system", content="In-array reminder."),
+        ],
+    )
+    out = from_anthropic_request(req)
+    systems = [m for m in out.messages if isinstance(m, SystemMessage)]
+    assert len(systems) == 1
+    assert out.messages[0].content == "Top-level instructions.\n\nIn-array reminder."
+
+
+def test_agentic_transcript_with_text_and_tool_result_is_well_ordered() -> None:
+    """A user turn carrying both a text block and a tool_result (any order)
+    emits the tool reply adjacent to the assistant tool_calls turn."""
+    req = AnthropicMessagesRequest(
+        model="m", max_tokens=1024,
+        system="You are a coding agent.",
+        tools=[AnthropicToolDef(
+            name="run_tests", description="run tests", input_schema={"type": "object"},
+        )],
+        messages=[
+            AnthropicMessage(role="user", content="Fix it."),
+            AnthropicMessage(role="assistant", content=[
+                {"type": "tool_use", "id": "tu_1",  # type: ignore[list-item]
+                 "name": "run_tests", "input": {}},
+            ]),
+            AnthropicMessage(role="user", content=[
+                {"type": "text", "text": "extra context"},  # type: ignore[list-item]
+                {"type": "tool_result", "tool_use_id": "tu_1",  # type: ignore[list-item]
+                 "content": "1 failed"},
+            ]),
+        ],
+    )
+    out = from_anthropic_request(req)
+    _assert_openai_ordering_invariants(out.messages)
+    # system, user, assistant(tool_calls), tool, user(text)
+    assert [type(m).__name__ for m in out.messages] == [
+        "SystemMessage", "UserMessage", "AssistantMessage",
+        "ToolMessage", "UserMessage",
+    ]
