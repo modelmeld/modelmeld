@@ -33,20 +33,37 @@ _SENSITIVE_PATTERNS: tuple[re.Pattern[str], ...] = (
 _MAX_DETAIL_LEN = 240
 
 
+def redact_sensitive(text: str) -> str:
+    """Strip credential-shape substrings from a string. No length bound.
+
+    For SERVER-SIDE logs, where an operator needs the full upstream detail
+    (e.g. a provider's complete `invalid_parameter` message) but secrets must
+    still never be written to disk. Do NOT echo the result into an HTTP
+    response body — use `safe_error_detail` for anything client-facing.
+    """
+    for pattern in _SENSITIVE_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
+
+
 def safe_error_detail(error: object, default: str = "upstream error") -> str:
     """Return a sanitized error-detail string for HTTP response echo.
 
     - Coerces `error` to string
     - Replaces credential-shape substrings with "[REDACTED]"
-    - Truncates to a fixed max length to bound unbounded leakage
+    - Truncates to a fixed max length to bound unbounded leakage into the
+      response body, which an unauthenticated caller may observe
     - Falls back to `default` for empty input
+
+    The length bound is a deliberate security measure; when you need the full
+    detail for diagnosis, log `redact_sensitive(str(error))` server-side
+    instead of widening this.
     """
     text = str(error) if error is not None else ""
     if not text:
         return default
 
-    for pattern in _SENSITIVE_PATTERNS:
-        text = pattern.sub("[REDACTED]", text)
+    text = redact_sensitive(text)
 
     if len(text) > _MAX_DETAIL_LEN:
         text = text[: _MAX_DETAIL_LEN - 16] + "...[truncated]"
