@@ -55,6 +55,7 @@ from modelmeld.api.routes.chat import (
     _routing_headers,
     _write_memory_turns,
     _write_memory_turns_streaming,
+    set_metrics_context,
 )
 from modelmeld.api.routing_hints import (
     RoutingHintError,
@@ -294,6 +295,11 @@ async def anthropic_messages(
     rt: Router = fastapi_request.app.state.router
     scrubber: Scrubber | None = fastapi_request.app.state.scrubber
     hooks: HookRegistry = fastapi_request.app.state.hooks
+    set_metrics_context(
+        getattr(fastapi_request.app.state, "metrics", None),
+        getattr(fastapi_request.app.state, "model_registry", None),
+        "messages",
+    )
     provider: MemoryProvider | None = getattr(
         fastapi_request.app.state, "memory_provider", None,
     )

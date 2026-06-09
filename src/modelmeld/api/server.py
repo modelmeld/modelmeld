@@ -23,6 +23,7 @@ from modelmeld.memory import (
     PostgresMemoryStore,
     TieredMemoryProvider,
 )
+from modelmeld.metrics import MetricsCollector
 from modelmeld.privacy import Scrubber, build_scrubber
 from modelmeld.router import Router, SingleAdapterRouter, build_router
 from modelmeld.scout import ModelRegistry, Scout, build_scout
@@ -95,6 +96,11 @@ def build_app(
     # resolvers already prefer its `all_entries_multi`, so this is strictly
     # more correct for every consumer.
     app.state.model_registry = model_registry or default_multi_provider_registry()
+
+    # In-process request/spend metrics collector (GET /metrics). One per app so
+    # a freshly built app starts zeroed. Updated directly from the route success
+    # paths (not via the HookRegistry, which is the enterprise seam).
+    app.state.metrics = MetricsCollector()
     # Tiered memory. Default: in-process backend for dev/tests; operators can
     # opt into a SQL-backed store with MODELMELD_MEMORY_BACKEND=postgres.
     if memory_store is not None:
@@ -142,6 +148,7 @@ def build_app(
         chat,
         healthz,
         messages,
+        metrics,
         models,
         responses,
         version,
@@ -149,6 +156,7 @@ def build_app(
 
     app.include_router(healthz.router)
     app.include_router(version.router)
+    app.include_router(metrics.router)
     app.include_router(models.router, prefix="/v1")
     app.include_router(chat.router, prefix="/v1")
     app.include_router(messages.router, prefix="/v1")
