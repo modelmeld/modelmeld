@@ -311,6 +311,28 @@ def test_tool_use_routing_keeps_agentic_off_gpt_oss() -> None:
             assert entry.task_scores["tool_use"] < 0.80
 
 
+def test_default_threshold_agentic_routing_avoids_sustain_failers() -> None:
+    """Out-of-box guard: at the DEFAULT quality threshold (0.70), a tool-bearing
+    request must not route to a model observed to fail sustained agentic work.
+    gpt-oss-120b (eval ~0.1) and llama-3.3-70b (hallucinated completion on a real
+    ticket) are both demoted below 0.70 for tool_use, so the default pick is a
+    sustain-capable coder. Prevents the footgun where -saver/-auto silently sent
+    agentic coding to a model that declares victory without doing the work."""
+    reg = MultiProviderModelRegistry.load_default()
+    hosted = frozenset({"fireworks", "together", "openrouter"})
+    pick = reg.pick(
+        "tool_use", quality_threshold=0.70,
+        require_tool_support=True, eligible_providers=hosted,
+    )
+    assert pick is not None
+    assert pick.model_id not in {"gpt-oss-120b", "llama-3.3-70b-instruct"}
+    # llama keeps a usable non-agentic (coding) score — only tool_use is demoted.
+    for entry in reg.all_entries_multi():
+        if entry.model_id == "llama-3.3-70b-instruct" and entry.provider == "openrouter":
+            assert entry.task_scores["tool_use"] < 0.70
+            assert entry.task_scores["coding"] >= 0.70
+
+
 def test_load_default_overlay_supports_tools_inherits_from_base() -> None:
     """Conservative AND: if base says no-tools, overlay row also says no-tools."""
     reg = MultiProviderModelRegistry.load_default()

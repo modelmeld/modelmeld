@@ -38,8 +38,8 @@
       "context_window": 131072,
       "cost_per_m_input": 0.1,
       "cost_per_m_output": 0.32,
-      "task_scores": {"tool_use": 0.81},
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      "task_scores": {"tool_use": 0.55},
+      "source": "modelmeld_agentic_obs_2026_06_08"
     },
     {
       "model_id": "deepseek-v4-pro",
