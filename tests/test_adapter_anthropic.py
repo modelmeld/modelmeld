@@ -173,6 +173,43 @@ async def test_stream_chat_wraps_upstream_error() -> None:
             pass
 
 
+class _FakeStreamRaisingMidway:
+    """Opens fine, yields one event, then raises during iteration."""
+
+    def __init__(self, event: SimpleNamespace, exc: Exception) -> None:
+        self._event = event
+        self._exc = exc
+        self._yielded = False
+
+    def __aiter__(self) -> _FakeStreamRaisingMidway:
+        return self
+
+    async def __anext__(self) -> SimpleNamespace:
+        if not self._yielded:
+            self._yielded = True
+            return self._event
+        raise self._exc
+
+
+async def test_stream_chat_wraps_mid_stream_errors_in_adapter_error() -> None:
+    # Regression: an error raised DURING iteration (stream opened 200, then
+    # errored) must be wrapped as AdapterError, not escape uncaught past
+    # `_try_open_stream_native` and surface as a 500 instead of failover.
+    adapter = AnthropicAdapter(api_key="test-key")
+    start = _event({
+        "type": "message_start",
+        "message": {"id": "msg_s_1", "model": "claude-sonnet-4-6"},
+    })
+    adapter._client.messages.create = AsyncMock(  # type: ignore[method-assign]
+        return_value=_FakeStreamRaisingMidway(
+            start, RuntimeError("anthropic mid-stream overloaded"),
+        )
+    )
+    with pytest.raises(AdapterError, match="stream interrupted"):
+        async for _ in adapter.stream_chat(_request()):
+            pass
+
+
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------

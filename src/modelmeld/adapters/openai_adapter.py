@@ -111,8 +111,21 @@ class OpenAIAdapter(ProviderAdapter):
             raise wrap_as_adapter_error(
                 e, "OpenAI stream_chat call failed",
             ) from e
-        async for chunk in stream:
-            yield ChatCompletionChunk.model_validate(chunk.model_dump())
+        # Errors raised DURING iteration (e.g. a provider that opens the stream
+        # 200 then injects an SSE error event, which the SDK re-raises as a bare
+        # APIError) must also be wrapped as AdapterError. Otherwise they escape
+        # uncaught past `_try_open_stream_native` (which only catches
+        # AdapterError), bypassing the router's failover and surfacing as a 500
+        # instead of a clean 502/failover. GeneratorExit / CancelledError are
+        # BaseException, not Exception, so consumer-side close/cancel passes
+        # through untouched.
+        try:
+            async for chunk in stream:
+                yield ChatCompletionChunk.model_validate(chunk.model_dump())
+        except Exception as e:
+            raise wrap_as_adapter_error(
+                e, "OpenAI stream_chat stream interrupted",
+            ) from e
 
     async def health(self) -> bool:
         try:
