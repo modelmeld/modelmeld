@@ -14,6 +14,21 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.13.0](https://github.com/modelmeld/modelmeld/compare/v0.12.0...v0.13.0) (2026-06-09)
+
+
+### Features
+
+* **api:** add GET /metrics local request/spend observability surface ([#79](https://github.com/modelmeld/modelmeld/issues/79)) ([625f957](https://github.com/modelmeld/modelmeld/commit/625f957a3bb6e3405ca7a34be93c62aac75bc8d6))
+
+
+### Bug Fixes
+
+* **adapters:** wrap stream-iteration errors as AdapterError so failover engages ([#77](https://github.com/modelmeld/modelmeld/issues/77)) ([d5ec3ea](https://github.com/modelmeld/modelmeld/commit/d5ec3ea004158847405a4b5c16d3df53ab821790))
+* **api:** log full credential-redacted upstream error on 5xx failover ([#78](https://github.com/modelmeld/modelmeld/issues/78)) ([4f52559](https://github.com/modelmeld/modelmeld/commit/4f525596cc2617c5a982bf31fe6bf13449761669))
+* **routing:** demote llama-3.3-70b agentic tool_use below the default floor ([#74](https://github.com/modelmeld/modelmeld/issues/74)) ([f88e4d0](https://github.com/modelmeld/modelmeld/commit/f88e4d02ebd161fb1eb67ac9124070f0ddba9ea8))
+* **translation:** keep system at front and tool replies adjacent for strict OpenAI-compatible backends ([#76](https://github.com/modelmeld/modelmeld/issues/76)) ([3a70acb](https://github.com/modelmeld/modelmeld/commit/3a70acb6f2a45d36e891d67164db6d4fee970a48))
+
 ## [0.12.0](https://github.com/modelmeld/modelmeld/compare/v0.11.0...v0.12.0) (2026-06-08)
 
 
