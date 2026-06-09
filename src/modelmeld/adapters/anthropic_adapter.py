@@ -281,11 +281,22 @@ class AnthropicAdapter(ProviderAdapter):
                 e, "Anthropic stream_chat call failed",
             ) from e
 
+        # Wrap iteration errors as AdapterError too (a stream that opens 200
+        # then errors mid-flight). Unwrapped, they escape past
+        # `_try_open_stream_native` — which only catches AdapterError — and
+        # bypass the router's failover, surfacing as a 500 instead of a clean
+        # 502/failover. GeneratorExit / CancelledError are BaseException, so
+        # consumer-side close/cancel is not swallowed.
         translator = AnthropicStreamTranslator()
-        async for event in stream:
-            chunk = translator.translate_event(event.model_dump())
-            if chunk is not None:
-                yield chunk
+        try:
+            async for event in stream:
+                chunk = translator.translate_event(event.model_dump())
+                if chunk is not None:
+                    yield chunk
+        except Exception as e:
+            raise wrap_as_adapter_error(
+                e, "Anthropic stream_chat stream interrupted",
+            ) from e
 
     async def _stream_chat_via_oauth(
         self,

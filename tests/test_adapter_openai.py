@@ -125,6 +125,68 @@ async def test_stream_chat_yields_converted_chunks() -> None:
     assert collected[-1].choices[0].finish_reason == "stop"
 
 
+class _FakeAsyncStreamRaisingMidway:
+    """Opens fine, yields one chunk, then raises during iteration — models a
+    provider that returns 200 then injects an SSE error event."""
+
+    def __init__(self, chunk: SDKChatCompletionChunk, exc: Exception) -> None:
+        self._chunk = chunk
+        self._exc = exc
+        self._yielded = False
+
+    def __aiter__(self) -> _FakeAsyncStreamRaisingMidway:
+        return self
+
+    async def __anext__(self) -> SDKChatCompletionChunk:
+        if not self._yielded:
+            self._yielded = True
+            return self._chunk
+        raise self._exc
+
+
+async def test_stream_chat_wraps_mid_stream_errors_in_adapter_error() -> None:
+    # Regression: an error raised DURING stream iteration (not at open) must be
+    # wrapped as AdapterError so it can fail over instead of escaping as a 500.
+    adapter = OpenAIAdapter(api_key="test-key")
+    first = SDKChatCompletionChunk.model_validate({
+        "id": "chatcmpl-x", "object": "chat.completion.chunk", "created": 1,
+        "model": "gpt-4o-mini",
+        "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hi"},
+                     "finish_reason": None}],
+    })
+    adapter._client.chat.completions.create = AsyncMock(  # type: ignore[method-assign]
+        return_value=_FakeAsyncStreamRaisingMidway(
+            first, RuntimeError("Provider returned error"),
+        )
+    )
+
+    with pytest.raises(AdapterError, match="stream interrupted"):
+        async for _ in adapter.stream_chat(_request()):
+            pass
+
+
+async def test_stream_chat_error_on_first_chunk_wraps_as_adapter_error() -> None:
+    # The failover-critical case: the error surfaces on the FIRST __anext__()
+    # (what `_try_open_stream_native` awaits), so it must be an AdapterError for
+    # the router to catch it and route to a fallback rather than 500.
+    adapter = OpenAIAdapter(api_key="test-key")
+
+    class _RaisesImmediately:
+        def __aiter__(self) -> _RaisesImmediately:
+            return self
+
+        async def __anext__(self) -> SDKChatCompletionChunk:
+            raise RuntimeError("Provider returned error")
+
+    adapter._client.chat.completions.create = AsyncMock(  # type: ignore[method-assign]
+        return_value=_RaisesImmediately()
+    )
+
+    agen = adapter.stream_chat(_request())
+    with pytest.raises(AdapterError, match="stream interrupted"):
+        await agen.__anext__()
+
+
 async def test_health_true_on_success() -> None:
     adapter = OpenAIAdapter(api_key="test-key")
     adapter._client.models.list = AsyncMock(return_value=MagicMock())  # type: ignore[method-assign]
