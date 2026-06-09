@@ -10,7 +10,9 @@ import os
 import time
 import uuid
 from collections.abc import AsyncIterator
+from contextvars import ContextVar
 from datetime import datetime, timezone
+from typing import NamedTuple
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
@@ -60,13 +62,94 @@ from modelmeld.memory import (
     extract_memory_identity,
     inject_into_request,
 )
+from modelmeld.metrics import MetricsCollector
 from modelmeld.privacy import Redaction, Scrubber
 from modelmeld.router import Router, RouterError, RoutingDecision
+from modelmeld.scout.registry import ModelRegistry
 from modelmeld.tokens import TokenCounter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class _MetricsContext(NamedTuple):
+    """Request-scoped sink for the in-process metrics collector.
+
+    Set at each route entry (chat / messages / responses) and read by the
+    success-firing helpers, so they can record metrics WITHOUT going through
+    the hook system — hooks are the enterprise seam and stay zero-subscriber by
+    default in OSS, but metrics is a built-in local surface that must record on
+    every successful request regardless.
+    """
+
+    collector: MetricsCollector
+    registry: ModelRegistry | None
+    wire_format: str
+
+
+_metrics_sink: ContextVar[_MetricsContext | None] = ContextVar(
+    "modelmeld_metrics_sink", default=None,
+)
+
+
+def set_metrics_context(
+    collector: MetricsCollector | None,
+    registry: ModelRegistry | None,
+    wire_format: str,
+) -> None:
+    """Install the per-request metrics sink. No-op when metrics isn't configured
+    (e.g. an app built without `app.state.metrics`). Call once at route entry."""
+    if collector is None:
+        return
+    _metrics_sink.set(_MetricsContext(collector, registry, wire_format))
+
+
+def _resolve_model_served(
+    request: ChatCompletionRequest, decision: RoutingDecision | None,
+) -> str:
+    """Canonical id of the model actually served — the capability-routing
+    override when one was applied, else the requested model."""
+    if decision is not None and decision.model_id_override:
+        return decision.model_id_override
+    return request.model
+
+
+def _record_metrics(
+    request: ChatCompletionRequest,
+    decision: RoutingDecision | None,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    total_tokens: int,
+) -> None:
+    """Record one successful request into the per-request metrics sink, if set.
+
+    Actual blended cost = (total_tokens / 1M) * the routed model's registry
+    rate; 0.0 when the rate is unknown. Best-effort — never raises into the
+    request path.
+    """
+    ctx = _metrics_sink.get()
+    if ctx is None:
+        return
+    try:
+        model_id = _resolve_model_served(request, decision) or (
+            decision.adapter.name if decision is not None else ""
+        )
+        cost = 0.0
+        if ctx.registry is not None and model_id:
+            entry = ctx.registry.get(model_id)
+            if entry is not None:
+                cost = (total_tokens / 1_000_000.0) * entry.blended_cost_per_m()
+        ctx.collector.record(
+            wire_format=ctx.wire_format,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model_id=model_id,
+            cost_usd=cost,
+        )
+    except Exception:
+        logger.exception("metrics recording failed")
 
 
 @router.post("/chat/completions", response_model=None)
@@ -78,6 +161,11 @@ async def chat_completions(
     rt: Router = fastapi_request.app.state.router
     scrubber: Scrubber | None = fastapi_request.app.state.scrubber
     hooks: HookRegistry = fastapi_request.app.state.hooks
+    set_metrics_context(
+        getattr(fastapi_request.app.state, "metrics", None),
+        getattr(fastapi_request.app.state, "model_registry", None),
+        "chat_completions",
+    )
     provider: MemoryProvider | None = getattr(fastapi_request.app.state, "memory_provider", None)
     token_counter: TokenCounter | None = getattr(fastapi_request.app.state, "token_counter", None)
     completion_cache: CompletionCache | None = getattr(
@@ -788,14 +876,24 @@ async def _fire_success(
     identity: dict[str, str | None] | None,
     cache_status: str | None = None,
 ) -> None:
+    usage = completion.usage
+    in_tok = usage.prompt_tokens if usage else 0
+    out_tok = usage.completion_tokens if usage else 0
+    total = usage.total_tokens if usage else 0
+    # Record local metrics regardless of hook subscribers (hooks are the
+    # enterprise seam; metrics is a built-in surface). Cheap; runs before the
+    # subscriber_count early-return that gates the more expensive event build.
+    _record_metrics(
+        request, decision,
+        input_tokens=in_tok, output_tokens=out_tok, total_tokens=total,
+    )
     if not hooks.subscriber_count:
         return
-    usage = completion.usage
     event = _build_event(
         request_id, started, request, decision, redactions, failover_from,
-        input_tokens=usage.prompt_tokens if usage else 0,
-        output_tokens=usage.completion_tokens if usage else 0,
-        total_tokens=usage.total_tokens if usage else 0,
+        input_tokens=in_tok,
+        output_tokens=out_tok,
+        total_tokens=total,
         error=None,
         error_type=None,
         identity=identity,
@@ -816,8 +914,6 @@ async def _fire_success_stream(
     last_usage: object | None,
     identity: dict[str, str | None] | None,
 ) -> None:
-    if not hooks.subscriber_count:
-        return
     if last_usage is not None:
         in_tok = last_usage.prompt_tokens  # type: ignore[attr-defined]
         out_tok = last_usage.completion_tokens  # type: ignore[attr-defined]
@@ -826,6 +922,13 @@ async def _fire_success_stream(
         in_tok = 0
         out_tok = estimated_output_tokens
         total = estimated_output_tokens
+    # Record local metrics regardless of hook subscribers (see _fire_success).
+    _record_metrics(
+        request, decision,
+        input_tokens=in_tok, output_tokens=out_tok, total_tokens=total,
+    )
+    if not hooks.subscriber_count:
+        return
     event = _build_event(
         request_id, started, request, decision, redactions, failover_from,
         input_tokens=in_tok,
@@ -889,12 +992,10 @@ def _build_event(
     routed_to = decision.adapter.name if decision is not None else ""
     tier = str(decision.tier) if decision is not None else ""
     # Capability routing fields (FinOps consumes these for savings math).
-    model_served = request.model
+    model_served = _resolve_model_served(request, decision)
     task_category = None
     quality_threshold: float | None = None
     if decision is not None:
-        if decision.model_id_override:
-            model_served = decision.model_id_override
         cap = getattr(decision, "capability_decision", None)
         if cap is not None:
             task_category = getattr(cap, "task_category", None)

@@ -44,6 +44,7 @@ from modelmeld.api.routes.chat import (
     _routing_headers,
     _try_open_stream,
     _write_memory_turns_streaming,
+    set_metrics_context,
 )
 from modelmeld.api.routing_hints import RoutingHintError, extract_hints_from_headers
 from modelmeld.api.schemas_responses import ResponsesRequest
@@ -83,6 +84,11 @@ async def responses(
     rt: Router = fastapi_request.app.state.router
     scrubber: Scrubber | None = fastapi_request.app.state.scrubber
     hooks: HookRegistry = fastapi_request.app.state.hooks
+    set_metrics_context(
+        getattr(fastapi_request.app.state, "metrics", None),
+        getattr(fastapi_request.app.state, "model_registry", None),
+        "responses",
+    )
     provider: MemoryProvider | None = getattr(
         fastapi_request.app.state, "memory_provider", None,
     )
