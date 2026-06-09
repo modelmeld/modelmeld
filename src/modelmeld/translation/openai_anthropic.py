@@ -494,18 +494,38 @@ def from_anthropic_request(req: AnthropicMessagesRequest) -> ChatCompletionReque
     role (malformed input), and on tool_result blocks on assistant role
     (also malformed — tool_results must come back to the assistant via user).
     """
-    messages: list[Message] = []
-
-    # 1. System (D-2): str or list[AnthropicTextBlock] → leading SystemMessage
+    # 1+2. System content is COALESCED into a single leading system message.
+    #    Anthropic permits a top-level `system` field AND — for Claude Code
+    #    headless (`-p`) — role:"system" messages mid-array. The OpenAI Chat
+    #    Completions contract expects the system message at position 0, and
+    #    strict OpenAI-compatible backends reject a `system` message anywhere
+    #    else ("invalid messages"). So we gather every system fragment
+    #    (top-level first, then in-array systems in the order they appear) into
+    #    one leading SystemMessage; the non-system body keeps its original
+    #    order. One Anthropic message may still yield multiple OpenAI messages
+    #    (mixed tool_result + text in a single user turn).
+    system_parts: list[str] = []
     if req.system is not None:
-        system_text = _anthropic_system_to_text(req.system)
-        if system_text:
-            messages.append(SystemMessage(role="system", content=system_text))
+        top_system = _anthropic_system_to_text(req.system)
+        if top_system:
+            system_parts.append(top_system)
 
-    # 2. Per-message conversion. One Anthropic message may yield multiple
-    #    OpenAI messages (mixed tool_result + text in a single user turn).
+    body_messages: list[Message] = []
     for msg in req.messages:
-        messages.extend(_anthropic_message_to_openai(msg))
+        for converted in _anthropic_message_to_openai(msg):
+            if isinstance(converted, SystemMessage):
+                system_text = _extract_text(converted.content)
+                if system_text:
+                    system_parts.append(system_text)
+            else:
+                body_messages.append(converted)
+
+    messages: list[Message] = []
+    if system_parts:
+        messages.append(
+            SystemMessage(role="system", content="\n\n".join(system_parts))
+        )
+    messages.extend(body_messages)
 
     # 3. Tools
     tools: list[Tool] | None = None
@@ -572,38 +592,35 @@ def _anthropic_user_to_openai(msg: AnthropicMessage) -> list[Message]:
     """User message → potentially multiple OpenAI messages.
 
     Pure-string content → single UserMessage.
-    List of blocks: tool_result blocks become their own ToolMessages
-    (one per block); contiguous text/image blocks accumulate into a
-    UserMessage. The original block order is preserved.
+    List of blocks: tool_result blocks become their own ToolMessages (one per
+    block); text/image blocks accumulate into a single trailing UserMessage.
+
+    tool_result blocks answer the immediately preceding assistant tool_calls
+    turn, so they are ALWAYS emitted FIRST — before the user text/image
+    content — regardless of where they sit in the Anthropic block list. The
+    OpenAI Chat Completions contract requires a tool message to immediately
+    follow the assistant turn that called it; strict OpenAI-compatible backends
+    reject an interleaved user text block wedged between them as "invalid
+    messages". Preserving the raw block order here (text-before-tool_result)
+    produced exactly that.
     """
     if isinstance(msg.content, str):
         return [UserMessage(role="user", content=msg.content)]
 
-    out: list[Message] = []
-    pending_user_parts: list[TextPart | ImagePart] = []
-
-    def _flush_pending() -> None:
-        if not pending_user_parts:
-            return
-        # Simplify the common case of a single text block → plain string.
-        if len(pending_user_parts) == 1 and isinstance(pending_user_parts[0], TextPart):
-            out.append(UserMessage(role="user", content=pending_user_parts[0].text))
-        else:
-            out.append(UserMessage(role="user", content=list(pending_user_parts)))
-        pending_user_parts.clear()
+    tool_messages: list[Message] = []
+    user_parts: list[TextPart | ImagePart] = []
 
     for block in msg.content:
         if isinstance(block, AnthropicTextBlock):
-            pending_user_parts.append(TextPart(type="text", text=block.text))
+            user_parts.append(TextPart(type="text", text=block.text))
         elif isinstance(block, AnthropicImageBlock):
             raise TranslationError(
                 "Anthropic image content blocks are not supported in v1 "
                 "of the /v1/messages route. Deferred per the design doc."
             )
         elif isinstance(block, AnthropicToolResultBlock):
-            _flush_pending()
             content_text = _anthropic_tool_result_content_to_text(block.content)
-            out.append(ToolMessage(
+            tool_messages.append(ToolMessage(
                 role="tool",
                 tool_call_id=block.tool_use_id,
                 content=content_text,
@@ -620,7 +637,14 @@ def _anthropic_user_to_openai(msg: AnthropicMessage) -> list[Message]:
                 f"Unknown user content block type: {type(block).__name__}"
             )
 
-    _flush_pending()
+    # tool_results first (adjacency to the assistant tool_calls turn), then the
+    # accumulated user text/image content as one trailing UserMessage.
+    out: list[Message] = list(tool_messages)
+    if user_parts:
+        if len(user_parts) == 1 and isinstance(user_parts[0], TextPart):
+            out.append(UserMessage(role="user", content=user_parts[0].text))
+        else:
+            out.append(UserMessage(role="user", content=list(user_parts)))
     return out
 
 
