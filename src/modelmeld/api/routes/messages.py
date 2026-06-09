@@ -32,7 +32,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from modelmeld.adapters import AdapterError
 from modelmeld.adapters.anthropic_adapter import AnthropicAdapter
-from modelmeld.api._safe_error_detail import safe_error_detail
+from modelmeld.api._safe_error_detail import redact_sensitive, safe_error_detail
 from modelmeld.api.auth_detection import AuthKind, classify_authorization
 from modelmeld.api.byok import (
     build_byok_adapters,
@@ -553,6 +553,10 @@ async def anthropic_messages(
     except AdapterError as primary:
         fallback = await rt.route_after_failure(decision, outgoing, error=primary)
         if fallback is None:
+            logger.warning(
+                "chat failed, no fallback available: %s",
+                redact_sensitive(str(primary)),
+            )
             await _fire_failure(
                 hooks, request_id, started, outgoing, decision, redactions, None,
                 primary, "adapter_error", identity,
@@ -565,6 +569,10 @@ async def anthropic_messages(
                 decision.adapter, outgoing, decision, body, extra_anthropic_headers,
             )
         except AdapterError as secondary:
+            logger.warning(
+                "chat primary + fallback both failed: primary=%s; fallback=%s",
+                redact_sensitive(str(primary)), redact_sensitive(str(secondary)),
+            )
             await _fire_failure(
                 hooks, request_id, started, outgoing, decision, redactions,
                 failover_from, secondary, "adapter_error", identity,
@@ -770,6 +778,14 @@ async def _stream_messages_with_failover(
         )
         if fallback is None:
             err = primary_error or AdapterError("primary stream open failed")
+            # Log the FULL (credential-redacted) upstream error server-side; the
+            # client only gets the length-bounded safe_error_detail below, which
+            # can truncate away the provider's real reason (e.g. an upstream
+            # invalid_parameter message). The log is the diagnostic record.
+            logger.warning(
+                "stream open failed, no fallback available: %s",
+                redact_sensitive(str(err)),
+            )
             await _fire_failure(
                 hooks, request_id, started, request, decision, redactions, None,
                 err, "adapter_error", identity,
@@ -777,7 +793,7 @@ async def _stream_messages_with_failover(
             raise HTTPException(status_code=502, detail=safe_error_detail(err))
         failover_from = str(decision.tier)
         decision = fallback
-        primary_aiter, first_chunk, _ = await _try_open_stream_native(
+        primary_aiter, first_chunk, fallback_error = await _try_open_stream_native(
             decision.adapter,
             _apply_model_override(request, decision),
             native_request,  # type: ignore[arg-type]
@@ -785,9 +801,14 @@ async def _stream_messages_with_failover(
             model_override=decision.model_id_override,
         )
         if primary_aiter is None and first_chunk is None:
+            fb_err = fallback_error or AdapterError("fallback stream open failed")
+            logger.warning(
+                "fallback stream open also failed: %s",
+                redact_sensitive(str(fb_err)),
+            )
             await _fire_failure(
                 hooks, request_id, started, request, decision, redactions,
-                failover_from, AdapterError("fallback stream open failed"),
+                failover_from, fb_err,
                 "adapter_error", identity,
             )
             raise HTTPException(status_code=502, detail="fallback stream open failed")
