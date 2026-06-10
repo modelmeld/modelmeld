@@ -91,6 +91,7 @@ from modelmeld.memory import (
 )
 from modelmeld.privacy import Scrubber
 from modelmeld.router import Router, RouterError
+from modelmeld.scout.registry import ModelEntry
 from modelmeld.tokens import TokenCounter
 from modelmeld.translation import (
     OpenAIToAnthropicStreamTranslator,
@@ -170,47 +171,73 @@ def _collect_oauth_camouflage_headers(
     return out
 
 
-# Client-specified, model-tuned controls that don't transfer across a model
-# substitution: the routed model may reject them (Anthropic 400 "… is not
-# supported on this model" / "does not support the … parameter"). They're sent
-# by Claude Code's beta endpoint tuned for the model it asked for. Dropped on
-# substitution; forwarded verbatim when there's none. B-3 (capability-aware
-# gating) is the real fix: forward each when the routed model supports it.
-#
-# These form an INTERDEPENDENT cluster and must be dropped atomically — e.g.
-# `context_management`'s `clear_thinking_*` strategy requires `thinking` to be
-# enabled, so dropping `thinking` while keeping `context_management` yields an
-# incoherent request (400 "clear_thinking strategy requires thinking …").
-# `output_config` is the wrapper Claude Code nests `effort` inside (top-level
-# `effort` is null). All confirmed via request-shape capture from the loop.
-_MODEL_TUNED_FIELDS = ("thinking", "effort", "output_config", "context_management")
+# Client model-tuned controls that don't transfer cleanly across a model
+# substitution (the routed model may 400 on them). Split into the reasoning
+# cluster — INTERDEPENDENT, must move atomically (context_management's
+# clear_thinking_* requires thinking; output_config wraps effort) — and the
+# context cluster, so B-3 can KEEP the reasoning controls when the served model
+# can take them ("anthropic_adaptive") instead of dropping everything blindly.
+_REASONING_TUNED_FIELDS = ("thinking", "effort", "output_config")
+_CONTEXT_TUNED_FIELDS = ("context_management",)
+_MODEL_TUNED_FIELDS = _REASONING_TUNED_FIELDS + _CONTEXT_TUNED_FIELDS
 
 
 def _native_body_for_upstream(
-    body: AnthropicMessagesRequest, served_model: str | None,
+    body: AnthropicMessagesRequest,
+    served_model: str | None,
+    served_entry: ModelEntry | None = None,
 ) -> AnthropicMessagesRequest:
-    """Build the native Anthropic body to send upstream.
+    """Build the native Anthropic body to send upstream after a substitution.
 
     When capability/alias routing serves a model different from what the client
-    requested, pin the body's `model` to the served pick AND drop client
-    model-tuned controls (`_MODEL_TUNED_FIELDS`) the routed model may reject. No
-    substitution → return `body` unchanged so those controls (and everything
-    else, incl. cache_control) pass through verbatim.
+    requested, pin the body's `model` to the served pick and reconcile the
+    client's model-tuned controls against the served model's capability metadata
+    (B-3) rather than dropping them wholesale:
 
-    The drop must happen here, not in the adapter: the adapter receives a body
-    whose `model` is already rewritten to the served pick, so it can no longer
-    tell that a substitution occurred.
+      - `max_tokens` is clamped to the served model's `max_output_tokens`.
+      - the reasoning cluster (thinking/effort/output_config) is KEPT when the
+        served model's `reasoning_interface` can take it ("anthropic_adaptive"),
+        else dropped atomically.
+      - `context_management` is always dropped (gateway-side emulation is a
+        later phase).
+
+    `served_entry` None (model not resolvable in the registry) → conservative
+    fallback: drop the whole cluster, as before, so we never forward a control
+    an unknown model might reject. No substitution → return `body` unchanged so
+    everything (incl. cache_control) passes through verbatim.
+
+    The reconciliation must happen here, not in the adapter: the adapter
+    receives a body whose `model` is already rewritten, so it can no longer tell
+    a substitution occurred.
     """
     if not served_model or served_model == body.model:
         return body
-    native_body = body.model_copy(update={"model": served_model})
+
+    update: dict[str, object] = {"model": served_model}
+    if (
+        served_entry is not None
+        and served_entry.max_output_tokens is not None
+        and body.max_tokens is not None
+        and body.max_tokens > served_entry.max_output_tokens
+    ):
+        update["max_tokens"] = served_entry.max_output_tokens
+    native_body = body.model_copy(update=update)
+
+    keep_reasoning = (
+        served_entry is not None
+        and served_entry.reasoning_interface == "anthropic_adaptive"
+    )
+    drop = set(_CONTEXT_TUNED_FIELDS)
+    if not keep_reasoning:
+        drop |= set(_REASONING_TUNED_FIELDS)
+
     extra = native_body.model_extra
-    if isinstance(extra, dict) and any(f in extra for f in _MODEL_TUNED_FIELDS):
+    if isinstance(extra, dict) and any(f in extra for f in drop):
         # Replace (not mutate) the extra dict so the original body is untouched.
         object.__setattr__(
             native_body,
             "__pydantic_extra__",
-            {k: v for k, v in extra.items() if k not in _MODEL_TUNED_FIELDS},
+            {k: v for k, v in extra.items() if k not in drop},
         )
     return native_body
 
@@ -251,6 +278,7 @@ async def _try_open_stream_native(
     body: AnthropicMessagesRequest,
     extra_headers: dict[str, str] | None = None,
     model_override: str | None = None,
+    served_entry: ModelEntry | None = None,
 ):
     """Open a stream with optional native-Anthropic passthrough + extra
     headers forwarding. Same return shape as chat._try_open_stream:
@@ -259,9 +287,11 @@ async def _try_open_stream_native(
     `model_override` (when set) rewrites the native body's `model` field
     so the upstream Anthropic call uses the scout's chosen model id
     rather than the original alias (which Anthropic would 404 on).
+    `served_entry` is that model's registry row, used to reconcile the
+    client's model-tuned controls against its capabilities (B-3).
     """
     if isinstance(adapter, AnthropicAdapter):
-        native_body = _native_body_for_upstream(body, model_override)
+        native_body = _native_body_for_upstream(body, model_override, served_entry)
         aiter = adapter.stream_chat(
             request, native_request=native_body, extra_headers=extra_headers,
         ).__aiter__()
@@ -770,12 +800,23 @@ async def _stream_messages_with_failover(
     calls. Non-Anthropic adapters ignore it.
     """
     failover_from: str | None = None
+
+    def _served_entry(d: Any) -> ModelEntry | None:
+        """Resolve the served model's registry row for capability-aware
+        substitution reconciliation (B-3). None when the registry is absent or
+        the model isn't found → conservative drop in _native_body_for_upstream."""
+        get = getattr(model_registry, "get", None)
+        if get is None or not d.model_id_override:
+            return None
+        return get(d.model_id_override)
+
     primary_aiter, first_chunk, primary_error = await _try_open_stream_native(
         decision.adapter,
         _apply_model_override(request, decision),
         native_request,  # type: ignore[arg-type]
         extra_anthropic_headers,
         model_override=decision.model_id_override,
+        served_entry=_served_entry(decision),
     )
 
     if first_chunk is None and primary_aiter is None:
@@ -805,6 +846,7 @@ async def _stream_messages_with_failover(
             native_request,  # type: ignore[arg-type]
             extra_anthropic_headers,
             model_override=decision.model_id_override,
+            served_entry=_served_entry(decision),
         )
         if primary_aiter is None and first_chunk is None:
             fb_err = fallback_error or AdapterError("fallback stream open failed")

@@ -25,7 +25,9 @@
         "tool_use": 0.9
       },
       "last_updated": "2026-05-17T00:00:00Z",
-      "source": "manual_curation_2026_05_22"
+      "source": "manual_curation_2026_05_22",
+      "reasoning_interface": "anthropic_adaptive",
+      "max_output_tokens": 128000
     },
     {
       "model_id": "claude-sonnet-4-6",
@@ -41,7 +43,9 @@
         "tool_use": 0.85
       },
       "last_updated": "2026-05-17T00:00:00Z",
-      "source": "manual_curation_2026_05_22"
+      "source": "manual_curation_2026_05_22",
+      "reasoning_interface": "anthropic_adaptive",
+      "max_output_tokens": 64000
     },
     {
       "model_id": "claude-haiku-4-5",
@@ -57,7 +61,9 @@
         "tool_use": 0.75
       },
       "last_updated": "2026-05-17T00:00:00Z",
-      "source": "manual_curation_2026_05_22"
+      "source": "manual_curation_2026_05_22",
+      "reasoning_interface": "none",
+      "max_output_tokens": 64000
     },
     {
       "model_id": "gpt-5",
