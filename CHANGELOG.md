@@ -14,6 +14,14 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.15.0](https://github.com/modelmeld/modelmeld/compare/v0.14.0...v0.15.0) (2026-06-10)
+
+
+### Features
+
+* **registry:** B-3 Phase 1 — capability-aware substitution reconciliation ([#83](https://github.com/modelmeld/modelmeld/issues/83)) ([21a42a4](https://github.com/modelmeld/modelmeld/commit/21a42a4cc57cb0748f5e74ed48246bb03a3e4933))
+* **translation:** B-3 Phase 2 — forward reasoning intent to OSS backends ([#85](https://github.com/modelmeld/modelmeld/issues/85)) ([b9b0dbc](https://github.com/modelmeld/modelmeld/commit/b9b0dbca51cddd83eee4b220f8adfa2bbde4d039))
+
 ## [0.14.0](https://github.com/modelmeld/modelmeld/compare/v0.13.0...v0.14.0) (2026-06-10)
 
 
