@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from modelmeld.api.schemas import (
@@ -484,7 +484,7 @@ class AnthropicStreamTranslator:
 # reasoning-capable models and silently IGNORE on the rest (verified: no 4xx) —
 # so this is a safe additive translation, not gated on the served model. Anthropic
 # effort above "high" (xhigh/max) clamps to "high" (reasoning_effort tops out there).
-_ANTHROPIC_EFFORT_TO_REASONING: dict[str, str] = {
+_ANTHROPIC_EFFORT_TO_REASONING: dict[str, Literal["low", "medium", "high"]] = {
     "low": "low",
     "medium": "medium",
     "high": "high",
@@ -495,7 +495,7 @@ _ANTHROPIC_EFFORT_TO_REASONING: dict[str, str] = {
 
 def _reasoning_effort_from_anthropic(
     req: AnthropicMessagesRequest,
-) -> str | None:
+) -> Literal["low", "medium", "high"] | None:
     """Map the client's reasoning intent to the internal `reasoning_effort`.
 
     `output_config.effort` wins when present; otherwise adaptive thinking
@@ -505,9 +505,11 @@ def _reasoning_effort_from_anthropic(
     extra = req.model_extra or {}
     output_config = extra.get("output_config")
     if isinstance(output_config, dict):
-        mapped = _ANTHROPIC_EFFORT_TO_REASONING.get(output_config.get("effort"))
-        if mapped is not None:
-            return mapped
+        effort = output_config.get("effort")
+        if isinstance(effort, str):
+            mapped = _ANTHROPIC_EFFORT_TO_REASONING.get(effort)
+            if mapped is not None:
+                return mapped
     thinking = extra.get("thinking")
     if isinstance(thinking, dict) and thinking.get("type") not in (None, "disabled"):
         return "medium"
