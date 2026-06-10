@@ -478,6 +478,42 @@ class AnthropicStreamTranslator:
 # Request: Anthropic → OpenAI  (feeds the /v1/messages route)
 # ---------------------------------------------------------------------------
 
+# Claude Code's reasoning intent (output_config.effort / thinking) is otherwise
+# dropped by the field-by-field mapping below. B-3 Phase 2 re-surfaces it as the
+# OpenAI-compatible `reasoning_effort`, which OpenAI-compat OSS backends honor on
+# reasoning-capable models and silently IGNORE on the rest (verified: no 4xx) —
+# so this is a safe additive translation, not gated on the served model. Anthropic
+# effort above "high" (xhigh/max) clamps to "high" (reasoning_effort tops out there).
+_ANTHROPIC_EFFORT_TO_REASONING: dict[str, str] = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "xhigh": "high",
+    "max": "high",
+}
+
+
+def _reasoning_effort_from_anthropic(
+    req: AnthropicMessagesRequest,
+) -> str | None:
+    """Map the client's reasoning intent to the internal `reasoning_effort`.
+
+    `output_config.effort` wins when present; otherwise adaptive thinking
+    (`thinking.type` not disabled/absent) maps to a moderate default. None when
+    the client signalled no reasoning.
+    """
+    extra = req.model_extra or {}
+    output_config = extra.get("output_config")
+    if isinstance(output_config, dict):
+        mapped = _ANTHROPIC_EFFORT_TO_REASONING.get(output_config.get("effort"))
+        if mapped is not None:
+            return mapped
+    thinking = extra.get("thinking")
+    if isinstance(thinking, dict) and thinking.get("type") not in (None, "disabled"):
+        return "medium"
+    return None
+
+
 def from_anthropic_request(req: AnthropicMessagesRequest) -> ChatCompletionRequest:
     """Translate an Anthropic Messages request into the internal OpenAI shape.
 
@@ -554,6 +590,11 @@ def from_anthropic_request(req: AnthropicMessagesRequest) -> ChatCompletionReque
         stream=req.stream or False,
         tools=tools,
         tool_choice=tool_choice,
+        # B-3 Phase 2: carry the client's reasoning intent (output_config.effort
+        # / adaptive thinking) as reasoning_effort so OpenAI-compatible OSS
+        # backends reason instead of having it dropped. None when no reasoning
+        # was signalled.
+        reasoning_effort=_reasoning_effort_from_anthropic(req),
         # metadata.user_id maps onto the OpenAI `user` field (similar purpose:
         # abuse/safety tracking by end-user identity).
         user=(req.metadata.user_id if req.metadata else None),
