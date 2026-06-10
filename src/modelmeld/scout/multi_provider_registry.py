@@ -208,11 +208,20 @@ class MultiProviderModelRegistry(ModelRegistry):
         # Index base entries for inheritance lookups.
         scores_by_model: dict[str, dict[str, float]] = {}
         supports_tools_by_model: dict[str, bool] = {}
+        reasoning_by_model: dict[str, str] = {}
+        max_output_by_model: dict[str, int | None] = {}
+        betas_by_model: dict[str, tuple[str, ...]] = {}
         for entry in base_entries:
             if entry.model_id not in scores_by_model and entry.task_scores:
                 scores_by_model[entry.model_id] = dict(entry.task_scores)
             if entry.model_id not in supports_tools_by_model:
                 supports_tools_by_model[entry.model_id] = entry.supports_tools
+            if entry.model_id not in reasoning_by_model and entry.reasoning_interface != "none":
+                reasoning_by_model[entry.model_id] = entry.reasoning_interface
+            if entry.model_id not in max_output_by_model and entry.max_output_tokens is not None:
+                max_output_by_model[entry.model_id] = entry.max_output_tokens
+            if entry.model_id not in betas_by_model and entry.supported_betas:
+                betas_by_model[entry.model_id] = entry.supported_betas
 
         # Load the overlay JSON shipped with the package.
         overlay_payload = json.loads(
@@ -245,6 +254,19 @@ class MultiProviderModelRegistry(ModelRegistry):
             row_supports_tools = bool(row.get("supports_tools", True))
             base_supports_tools = supports_tools_by_model.get(model_id, True)
             final_supports_tools = row_supports_tools and base_supports_tools
+            # Capability metadata: overlay row OVERRIDES base; inherit base when
+            # the row omits it (mirrors task_scores / supports_tools).
+            reasoning = row.get("reasoning_interface") or reasoning_by_model.get(
+                model_id, "none",
+            )
+            max_output = (
+                int(row["max_output_tokens"])
+                if row.get("max_output_tokens") is not None
+                else max_output_by_model.get(model_id)
+            )
+            betas = tuple(row["supported_betas"]) if row.get(
+                "supported_betas",
+            ) is not None else betas_by_model.get(model_id, ())
             overlay_entries.append(
                 ModelEntry(
                     model_id=model_id,
@@ -257,6 +279,9 @@ class MultiProviderModelRegistry(ModelRegistry):
                     source=row.get("source", "default_overlay"),
                     provider_model_id=row.get("provider_model_id", ""),
                     supports_tools=final_supports_tools,
+                    reasoning_interface=reasoning,
+                    max_output_tokens=max_output,
+                    supported_betas=betas,
                 )
             )
 

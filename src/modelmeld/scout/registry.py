@@ -63,6 +63,27 @@ class ModelEntry:
     # below 7B parameters). CapabilityScout filters by this field
     # when the incoming request has `tools=[...]`.
     supports_tools: bool = True
+    # --- Capability metadata for substitution-time feature reconciliation (B-3) ---
+    # When alias/capability routing serves a different model than the client
+    # tuned its request for, these tell the reconciler whether to forward,
+    # translate, or drop the client's model-tuned controls instead of the old
+    # blunt "drop everything" behavior.
+    #
+    # `reasoning_interface` — how this model exposes reasoning on its egress
+    # path; drives whether `thinking`/`effort` survive a substitution:
+    #   "none"               — no reasoning surface; drop reasoning controls
+    #   "anthropic_adaptive" — Claude adaptive thinking (native Anthropic path)
+    # Interfaces for OpenAI-compatible backends are added in a later phase.
+    # Default "none" is conservative (drop). Sourced from provider catalog
+    # parameter lists, or known constants for the native Anthropic models.
+    reasoning_interface: str = "none"
+    # Per-model max output tokens; clamps an inbound `max_tokens` that exceeds
+    # the served model's ceiling (a common substitution 400). None = no clamp.
+    max_output_tokens: int | None = None
+    # `anthropic-beta` features the served path honors (Anthropic-native only),
+    # e.g. context-management/compaction; decides which betas survive a
+    # Claude->Claude substitution.
+    supported_betas: tuple[str, ...] = ()
 
     def blended_cost_per_m(
         self,
@@ -118,6 +139,12 @@ class ModelRegistry:
                     source=row.get("source", ""),
                     provider_model_id=row.get("provider_model_id", ""),
                     supports_tools=bool(row.get("supports_tools", True)),
+                    reasoning_interface=str(row.get("reasoning_interface", "none")),
+                    max_output_tokens=(
+                        int(row["max_output_tokens"])
+                        if row.get("max_output_tokens") is not None else None
+                    ),
+                    supported_betas=tuple(row.get("supported_betas", ())),
                 )
             )
         return cls(entries)
