@@ -14,6 +14,14 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.14.0](https://github.com/modelmeld/modelmeld/compare/v0.13.0...v0.14.0) (2026-06-10)
+
+
+### Features
+
+* **registry:** add GLM-4.6, Qwen3-Coder-480B, MiniMax-M2, Devstral-2512 to the overlay ([#80](https://github.com/modelmeld/modelmeld/issues/80)) ([8ceac3d](https://github.com/modelmeld/modelmeld/commit/8ceac3d899c705ae9e4c2e87c569a52a0c6b3975))
+* **registry:** replace provisional scores with measured tool_use for the four new models ([#82](https://github.com/modelmeld/modelmeld/issues/82)) ([4eaca91](https://github.com/modelmeld/modelmeld/commit/4eaca91ec90aa7c5e6caa54fb556b4e67a233293))
+
 ## [0.13.0](https://github.com/modelmeld/modelmeld/compare/v0.12.0...v0.13.0) (2026-06-09)
 
 
