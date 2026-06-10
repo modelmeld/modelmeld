@@ -1,7 +1,7 @@
 {
   "version": 1,
   "snapshot_release_date": "2026-05-30",
-  "notes": "Multi-provider availability overlay for canonical OSS coding models. Loaded automatically by MultiProviderModelRegistry.load_default() on top of the base default_registry.json. Each row adds one (model_id, provider) availability with its provider-specific model identifier and cost. Task scores merge over the base registry entry for the same model_id (overlay row keys override base per-key; unspecified categories are inherited). Costs are per million tokens (USD), validated against the upstream providers' live model catalogs on the snapshot release date via scripts/validate_overlay.py for Together and OpenRouter; Fireworks catalog responses omit pricing, so Fireworks rows use the most recent published rate-card values and may drift first. tool_use scores sourced modelmeld_tool_eval_v1_2026_06_07 are MEASURED per (model, provider) on an agentic multi-step bug-fix eval, calibrated onto the registry scale by anchoring the eval's top frontier model (claude-sonnet-4-6, which scored 1.0 on the eval) to its registry tool_use of 0.85 (score = eval_pass_rate * 0.85); a model that ties sonnet on the eval is placed at sonnet, never above (the v1 toy-bug set cannot establish superiority over frontier). The full curated lineup with weekly refresh and provider-reliability data is available via the live feed (MODELMELD_REGISTRY_FEED_URL + license key). See docs/registry-feed.md.",
+  "notes": "Multi-provider availability overlay for canonical OSS coding models. Loaded automatically by MultiProviderModelRegistry.load_default() on top of the base default_registry.json. Each row adds one (model_id, provider) availability with its provider-specific model identifier and cost. Task scores merge over the base registry entry for the same model_id (overlay row keys override base per-key; unspecified categories are inherited). Costs are per million tokens (USD), validated against the upstream providers' live model catalogs on the snapshot release date via scripts/validate_overlay.py for Together and OpenRouter; Fireworks catalog responses omit pricing, so Fireworks rows use the most recent published rate-card values and may drift first. tool_use scores sourced modelmeld_tool_eval_v1_2026_06_07 are MEASURED per (model, provider) on an agentic multi-step bug-fix eval, calibrated onto the registry scale by anchoring the eval's top frontier model (claude-sonnet-4-6, which scored 1.0 on the eval) to its registry tool_use of 0.85 (score = eval_pass_rate * 0.85); a model that ties sonnet on the eval is placed at sonnet, never above (the v1 toy-bug set cannot establish superiority over frontier). Rows tagged modelmeld_agentic_cliff_screen_* carry a CONSERVATIVE PROVISIONAL tool_use (0.75) from the multi-step agentic screen, NOT the calibrated 20-case harness; the screen discriminates (gpt-oss fails it) but is low-N, so the value is intentionally below the harness-measured strong tier (0.85) and pending replacement by a harness run. The full curated lineup with weekly refresh and provider-reliability data is available via the live feed (MODELMELD_REGISTRY_FEED_URL + license key). See docs/registry-feed.md.",
   "task_categories": [
     "coding",
     "reasoning",
@@ -141,6 +141,46 @@
       "cost_per_m_output": 0.8,
       "task_scores": {"tool_use": 0.85},
       "source": "modelmeld_tool_eval_v1_2026_06_07"
+    },
+    {
+      "model_id": "glm-4.6",
+      "provider": "openrouter",
+      "provider_model_id": "z-ai/glm-4.6",
+      "context_window": 202752,
+      "cost_per_m_input": 0.43,
+      "cost_per_m_output": 1.74,
+      "task_scores": {"tool_use": 0.75},
+      "source": "modelmeld_agentic_cliff_screen_2026-06-09_provisional"
+    },
+    {
+      "model_id": "qwen3-coder-480b",
+      "provider": "openrouter",
+      "provider_model_id": "qwen/qwen3-coder",
+      "context_window": 1048576,
+      "cost_per_m_input": 0.22,
+      "cost_per_m_output": 1.8,
+      "task_scores": {"tool_use": 0.75},
+      "source": "modelmeld_agentic_cliff_screen_2026-06-09_provisional"
+    },
+    {
+      "model_id": "minimax-m2",
+      "provider": "openrouter",
+      "provider_model_id": "minimax/minimax-m2",
+      "context_window": 204800,
+      "cost_per_m_input": 0.255,
+      "cost_per_m_output": 1.0,
+      "task_scores": {"tool_use": 0.75},
+      "source": "modelmeld_agentic_cliff_screen_2026-06-09_provisional"
+    },
+    {
+      "model_id": "devstral-2512",
+      "provider": "openrouter",
+      "provider_model_id": "mistralai/devstral-2512",
+      "context_window": 262144,
+      "cost_per_m_input": 0.4,
+      "cost_per_m_output": 2.0,
+      "task_scores": {"tool_use": 0.75},
+      "source": "modelmeld_agentic_cliff_screen_2026-06-09_provisional"
     }
   ]
 }
