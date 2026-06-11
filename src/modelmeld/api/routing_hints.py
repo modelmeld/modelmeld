@@ -21,6 +21,7 @@ came from a framework declaration vs the heuristic classifier.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -31,6 +32,17 @@ HEADER_TASK_CATEGORY = "x-modelmeld-task-category"
 HEADER_AGENT_ROLE = "x-modelmeld-agent-role"
 HEADER_QUALITY_THRESHOLD = "x-modelmeld-quality-threshold"
 HEADER_EXCLUDE_PROVIDERS = "x-modelmeld-exclude-providers"
+# Eval/debug ONLY: force a specific served model, bypassing capability routing.
+# Honored solely when MODELMELD_ALLOW_MODEL_PIN is set on the gateway — so it is
+# inert (the header is ignored) on any default/production deployment and is NOT a
+# public API surface. Exists to benchmark a specific model end-to-end (e.g. the
+# agentic-efficiency eval) without skewing registry data.
+HEADER_PIN_MODEL = "x-modelmeld-pin-model"
+_MODEL_PIN_ENV = "MODELMELD_ALLOW_MODEL_PIN"
+
+
+def _model_pin_enabled() -> bool:
+    return os.environ.get(_MODEL_PIN_ENV, "").strip().lower() in ("1", "true", "yes", "on")
 
 # Liberal mapping — frameworks use varied vocabulary. Keys are normalized
 # (lowercased, hyphens → underscores). Add to this rather than reject when
@@ -86,6 +98,8 @@ class RoutingHints:
     agent_role: str | None = None             # normalized lowercase form
     quality_threshold: float | None = None
     excluded_providers: frozenset[str] | None = None
+    # Eval/debug pin (env-gated; None unless MODELMELD_ALLOW_MODEL_PIN is set).
+    pin_model: str | None = None
 
     @property
     def has_category_hint(self) -> bool:
@@ -117,12 +131,19 @@ def extract_hints_from_headers(headers: Mapping[str, str]) -> RoutingHints:
     agent_role = _parse_agent_role(h.get(HEADER_AGENT_ROLE))
     quality_threshold = _parse_quality_threshold(h.get(HEADER_QUALITY_THRESHOLD))
     excluded_providers = _parse_excluded_providers(h.get(HEADER_EXCLUDE_PROVIDERS))
+    # Env-gated: the pin header is only read when explicitly enabled, so the
+    # field stays None (header ignored) on every default/production gateway.
+    pin_model = None
+    if _model_pin_enabled():
+        raw_pin = h.get(HEADER_PIN_MODEL)
+        pin_model = raw_pin.strip() if raw_pin and raw_pin.strip() else None
 
     return RoutingHints(
         task_category=task_category,
         agent_role=agent_role,
         quality_threshold=quality_threshold,
         excluded_providers=excluded_providers,
+        pin_model=pin_model,
     )
 
 

@@ -595,3 +595,62 @@ async def test_anthropic_stream_message_start_carries_canonical_routed_model() -
     assert msg_start is not None, f"no message_start event in stream: {raw[:300]!r}"
     assert msg_start["message"]["model"] == "qwen-cheap"
     assert cheap.received_models == ["qwen-cheap"]
+
+
+# ---------------------------------------------------------------------------
+# Eval/debug model pin (env-gated). When MODELMELD_ALLOW_MODEL_PIN is set, the
+# x-modelmeld-pin-model header forces a specific served model, bypassing the
+# scout. Inert (header ignored) when the env is unset — never a production
+# surface. Enables benchmarking a specific model end-to-end (agentic eval).
+# ---------------------------------------------------------------------------
+
+
+def _pin_app() -> tuple[_FakeAdapter, _FakeAdapter, object]:
+    # Scout would pick qwen-cheap (cheapest meeting threshold); the pin targets
+    # the pricier model so a successful pin is unambiguous.
+    cheap = _FakeAdapter("vllm")
+    pricier = _FakeAdapter("anthropic")
+    app = _build_app_with_capability_router(
+        registry_entries=[
+            _entry("qwen-cheap", "vllm", 0.5, 1.0, coding=0.85),
+            _entry("pricier-pin", "anthropic", 2.0, 4.0, coding=0.90),
+        ],
+        adapters={"vllm": cheap, "anthropic": pricier},
+    )
+    return cheap, pricier, app
+
+
+async def test_model_pin_overrides_scout_when_env_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("MODELMELD_ALLOW_MODEL_PIN", "1")
+    cheap, pricier, app = _pin_app()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post(
+            "/v1/chat/completions",
+            json=_payload("refactor this function"),
+            headers={"x-modelmeld-pin-model": "pricier-pin"},
+        )
+    assert resp.status_code == 200
+    # Pinned model served despite being pricier than the scout's normal pick.
+    assert pricier.received_models == ["pricier-pin"]
+    assert cheap.received_models == []
+    assert resp.headers["x-modelmeld-routed-model"] == "pricier-pin"
+
+
+async def test_model_pin_header_ignored_when_env_disabled(monkeypatch) -> None:
+    monkeypatch.delenv("MODELMELD_ALLOW_MODEL_PIN", raising=False)
+    cheap, pricier, app = _pin_app()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post(
+            "/v1/chat/completions",
+            json=_payload("refactor this function"),
+            headers={"x-modelmeld-pin-model": "pricier-pin"},
+        )
+    assert resp.status_code == 200
+    # Env off → header ignored → scout picks the cheapest as usual.
+    assert cheap.received_models == ["qwen-cheap"]
+    assert pricier.received_models == []
+    assert resp.headers["x-modelmeld-routed-model"] == "qwen-cheap"

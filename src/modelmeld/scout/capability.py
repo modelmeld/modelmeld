@@ -206,6 +206,16 @@ class CapabilityScout:
         the customer only supplied an Anthropic BYOK key would just
         cascade to a 503. None means "no BYOK restriction known."
         """
+        # Eval/debug model pin (env-gated upstream in routing_hints —
+        # `pin_model` is only ever populated when MODELMELD_ALLOW_MODEL_PIN is
+        # set, so this is inert on a default/production gateway). When present,
+        # bypass capability selection entirely and serve exactly that model, so
+        # a specific served model can be benchmarked end-to-end (agentic-
+        # efficiency eval) without skewing registry data or per-token routing.
+        pinned = hints.pin_model if hints is not None else None
+        if pinned:
+            return self._pinned_decision(request, pinned)
+
         # Hint-driven category overrides the classifier. Frameworks know what
         # their agents do; we trust the declaration when present.
         category_decision: TaskCategoryDecision | None = None
@@ -370,6 +380,32 @@ class CapabilityScout:
             category_decision=category_decision,
             devtool_fingerprint=fingerprint,
             rationale=rationale,
+        )
+
+    def _pinned_decision(
+        self, request: ChatCompletionRequest, model_id: str,
+    ) -> CapabilityDecision:
+        """Serve an explicitly pinned model, bypassing capability selection.
+        Eval/debug only (env-gated upstream). Raises NoEligibleModelError if the
+        pinned id isn't in the registry, so an operator typo fails loudly rather
+        than silently falling back to normal routing."""
+        entry = self.registry.get(model_id)
+        if entry is None:
+            raise NoEligibleModelError(
+                task_category="pinned",
+                quality_threshold=0.0,
+                eligible_providers=None,
+            )
+        return CapabilityDecision(
+            chosen_model_id=entry.model_id,
+            chosen_provider=entry.provider,
+            task_category="pinned",
+            task_score=0.0,
+            quality_threshold=0.0,
+            fallback_model_ids=[],
+            category_decision=None,
+            devtool_fingerprint=self.fingerprinter.identify(request),
+            rationale=f"PIN: model={entry.model_id};scout_bypassed(MODELMELD_ALLOW_MODEL_PIN)",
         )
 
     def lookup_fallback(self, model_id: str) -> ModelEntry | None:
