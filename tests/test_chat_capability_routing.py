@@ -10,6 +10,7 @@ Verifies that:
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 
 import httpx
@@ -20,6 +21,8 @@ from modelmeld.api.schemas import (
     ChatCompletionChunk,
     ChatCompletionRequest,
     Choice,
+    ChoiceDelta,
+    ChunkChoice,
     ResponseMessage,
     Usage,
 )
@@ -484,3 +487,111 @@ async def test_no_bias_header_when_no_bias_applied() -> None:
     assert "x-modelmeld-bias" not in resp.headers
 
 
+
+
+# ---------------------------------------------------------------------------
+# B-2: the Anthropic /v1/messages surface mirrors the OpenAI surface — the
+# response BODY reports the canonical routed model on a substitution, not the
+# requested model. These tests fail if request_model=served_model is reverted.
+# ---------------------------------------------------------------------------
+
+
+class _StreamFakeAdapter(ProviderAdapter):
+    """Streaming counterpart to _FakeAdapter: records the model it was asked to
+    serve and streams a short text response carrying that model id."""
+
+    is_egress = False
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.received_models: list[str] = []
+
+    async def chat(self, request: ChatCompletionRequest) -> ChatCompletion:
+        raise NotImplementedError("streaming-only adapter")
+
+    async def stream_chat(
+        self, request: ChatCompletionRequest,
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        self.received_models.append(request.model)
+        yield ChatCompletionChunk(
+            id="c1", object="chat.completion.chunk", created=1, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(role="assistant", content="ok"))],
+        )
+        yield ChatCompletionChunk(
+            id="c1", object="chat.completion.chunk", created=1, model=request.model,
+            choices=[ChunkChoice(index=0, delta=ChoiceDelta(), finish_reason="stop")],
+            usage=Usage(prompt_tokens=5, completion_tokens=1, total_tokens=6),
+        )
+
+    async def health(self) -> bool:
+        return True
+
+
+async def test_anthropic_messages_response_model_is_canonical_routed_model() -> None:
+    """Requesting claude-opus-4-7 but routing to qwen-cheap must surface
+    qwen-cheap (the served model) in the /v1/messages response body — mirroring
+    test_capability_routing_overrides_request_model for /v1/chat/completions."""
+    cheap = _FakeAdapter("vllm")
+    expensive = _FakeAdapter("anthropic")
+    app = _build_app_with_capability_router(
+        registry_entries=[
+            _entry("qwen-cheap", "vllm", 0.5, 1.0, coding=0.85),
+            _entry("opus", "anthropic", 5.0, 25.0, coding=0.95),
+        ],
+        adapters={"vllm": cheap, "anthropic": expensive},
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post("/v1/messages", json={
+            "model": "claude-opus-4-7",
+            "max_tokens": 64,
+            "messages": [{"role": "user", "content": "refactor this function"}],
+        })
+    assert resp.status_code == 200
+    # The adapter saw the OVERRIDDEN model id, not the user's claude-opus-4-7.
+    assert cheap.received_models == ["qwen-cheap"]
+    assert expensive.received_models == []
+    # Response body model == served model, matching x-modelmeld-routed-model.
+    assert resp.json()["model"] == "qwen-cheap"
+    assert resp.headers["x-modelmeld-routed-model"] == "qwen-cheap"
+
+
+async def test_anthropic_stream_message_start_carries_canonical_routed_model() -> None:
+    """Streaming counterpart: the message_start event carries the canonical
+    routed model on a substitution, not the requested model."""
+    cheap = _StreamFakeAdapter("vllm")
+    expensive = _FakeAdapter("anthropic")
+    app = _build_app_with_capability_router(
+        registry_entries=[
+            _entry("qwen-cheap", "vllm", 0.5, 1.0, coding=0.85),
+            _entry("opus", "anthropic", 5.0, 25.0, coding=0.95),
+        ],
+        adapters={"vllm": cheap, "anthropic": expensive},
+    )
+    raw = ""
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        async with client.stream("POST", "/v1/messages", json={
+            "model": "claude-opus-4-7",
+            "max_tokens": 64,
+            "stream": True,
+            "messages": [{"role": "user", "content": "refactor this function"}],
+        }) as resp:
+            assert resp.status_code == 200
+            async for piece in resp.aiter_text():
+                raw += piece
+    msg_start = None
+    for block in raw.split("\n\n"):
+        if "message_start" not in block:
+            continue
+        for line in block.splitlines():
+            if line.startswith("data:"):
+                msg_start = json.loads(line[len("data:"):].strip())
+                break
+        if msg_start:
+            break
+    assert msg_start is not None, f"no message_start event in stream: {raw[:300]!r}"
+    assert msg_start["message"]["model"] == "qwen-cheap"
+    assert cheap.received_models == ["qwen-cheap"]

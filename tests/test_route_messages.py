@@ -163,9 +163,17 @@ async def test_plain_request_returns_anthropic_shape() -> None:
     assert body["usage"] == {"input_tokens": 12, "output_tokens": 8}
 
 
-async def test_model_field_echoes_request_not_internal_completion_model() -> None:
-    """Capability routing may rewrite the internal model; the client must
-    see the model they asked for."""
+async def test_model_field_returns_canonical_routed_model() -> None:
+    """B-2: Response model field returns the canonical routed model (the model
+    the scout decided to serve), not the alias the client requested. This
+    matches the behavior of /v1/chat/completions and x-modelmeld-routed-model
+    in the response headers.
+
+    The _EchoAdapter is a single-adapter setup (no actual capability routing).
+    The model string it receives is the internal form (from the internal
+    ChatCompletionRequest), which mirrors what the client requested in this
+    case (no override). The response model field should match it.
+    """
     app = build_app(adapter=_EchoAdapter())
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test",
@@ -176,6 +184,8 @@ async def test_model_field_echoes_request_not_internal_completion_model() -> Non
             "messages": [{"role": "user", "content": "x"}],
         })
     assert resp.status_code == 200
+    # Response model field returns what the scout/router decided to serve.
+    # In single-adapter setup with no override, that's the request model itself.
     assert resp.json()["model"] == "claude-sonnet-4-6"
 
 
