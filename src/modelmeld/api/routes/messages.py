@@ -488,6 +488,10 @@ async def anthropic_messages(
     internal_request = inject_into_request(internal_request, mem_context)
     outgoing, redactions = _maybe_scrub(internal_request, decision, scrubber)
 
+    # Compute the canonical routed model (B-2: used in response body, not request echo).
+    # This is the model the scout decided to serve, not what the client asked for.
+    served_model = decision.model_id_override or outgoing.model
+
     # Streaming path (chunk 6). Pre-count input_tokens so the synthesized
     # `message_start` event carries an accurate count (Anthropic wire format
     # puts input_tokens upfront in message_start; output_tokens streams in
@@ -499,7 +503,7 @@ async def anthropic_messages(
         return await _stream_messages_with_failover(
             rt, decision, outgoing, redactions, hooks, request_id, started,
             identity, provider, mem_identity, token_counter,
-            request_model=body.model,
+            request_model=served_model,
             input_tokens=input_tokens,
             cache_status=cache_status,
             native_request=body,
@@ -511,7 +515,6 @@ async def anthropic_messages(
     # shape, so /v1/messages and /v1/chat/completions can share entries when
     # the prompt content is identical — cache hit just gets translated to
     # Anthropic shape on the way out.
-    served_model = decision.model_id_override or outgoing.model
     semantic_cacheable = is_request_semantically_cacheable(outgoing)
     cache_key = (
         cache_key_for_request(
@@ -535,7 +538,7 @@ async def anthropic_messages(
                 lookup.value, identity, cache_status="hit",
             )
             return _anthropic_json_response(
-                to_anthropic_response(lookup.value, request_model=body.model),
+                to_anthropic_response(lookup.value, request_model=served_model),
                 base_response=response,
             )
 
@@ -566,7 +569,7 @@ async def anthropic_messages(
                 sem_lookup.value, identity, cache_status="hit-semantic",
             )
             return _anthropic_json_response(
-                to_anthropic_response(sem_lookup.value, request_model=body.model),
+                to_anthropic_response(sem_lookup.value, request_model=served_model),
                 base_response=response,
             )
 
@@ -660,10 +663,12 @@ async def anthropic_messages(
     )
 
     # Translate internal ChatCompletion → Anthropic response shape.
-    # Pass body.model (the original) so capability-routing model overrides
-    # don't leak the internal target id to the client.
+    # Pass served_model (the canonical routed model) to match the behavior
+    # of /v1/chat/completions, which returns the routed model in the response
+    # body (B-2). This is the model that the scout decided to serve, matching
+    # x-modelmeld-routed-model in the response headers.
     return _anthropic_json_response(
-        to_anthropic_response(completion, request_model=body.model),
+        to_anthropic_response(completion, request_model=served_model),
         base_response=response,
     )
 

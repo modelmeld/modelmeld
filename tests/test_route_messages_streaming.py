@@ -237,6 +237,10 @@ async def test_text_stream_reassembles_to_full_response() -> None:
 
 
 async def test_message_start_carries_model_and_input_tokens() -> None:
+    """B-2: message_start event carries the canonical routed model (what the
+    scout decided to serve), matching x-modelmeld-routed-model in headers.
+    In this single-adapter setup with no override, the routed model is the
+    request model itself."""
     app = build_app(adapter=_TextStreamAdapter(text="ok"))
     status, _, raw = await _stream_post(app, {
         "model": "claude-haiku-4-5-20251001",
@@ -248,6 +252,7 @@ async def test_message_start_carries_model_and_input_tokens() -> None:
     msg_start = events[0]
     assert msg_start["type"] == "message_start"
     assert msg_start["_event_name"] == "message_start"
+    # The model field in message_start carries the canonical routed model
     assert msg_start["message"]["model"] == "claude-haiku-4-5-20251001"
     # input_tokens is the pre-counted estimate; must be >0 since the
     # user message wasn't empty
