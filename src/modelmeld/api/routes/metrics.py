@@ -27,6 +27,7 @@ def _serialize(snap: MetricsSnapshot) -> dict:
         "total_output_tokens": snap.total_output_tokens,
         "total_tokens": snap.total_tokens,
         "total_cost_usd": snap.total_cost_usd,
+        "uptime_seconds": snap.uptime_seconds,
         "per_model": {
             model_id: {
                 "request_count": m.request_count,

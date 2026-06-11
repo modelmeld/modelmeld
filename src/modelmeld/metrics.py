@@ -17,6 +17,7 @@ module imports nothing from the API or enterprise packages.
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 
 # Inbound wire formats we break request counts down by.
@@ -48,6 +49,7 @@ class MetricsSnapshot:
     total_tokens: int
 
     total_cost_usd: float
+    uptime_seconds: float
 
     per_model: dict[str, ModelMetrics]
 
@@ -62,6 +64,7 @@ class MetricsCollector:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._created_at = time.monotonic()
         self._wire_counts: dict[str, int] = {fmt: 0 for fmt in WIRE_FORMATS}
         self._input_tokens = 0
         self._output_tokens = 0
@@ -109,6 +112,7 @@ class MetricsCollector:
                 )
                 for model_id, s in self._model_stats.items()
             }
+            uptime = time.monotonic() - self._created_at
             return MetricsSnapshot(
                 chat_completions_count=self._wire_counts.get("chat_completions", 0),
                 messages_count=self._wire_counts.get("messages", 0),
@@ -120,5 +124,6 @@ class MetricsCollector:
                 total_output_tokens=self._output_tokens,
                 total_tokens=self._input_tokens + self._output_tokens,
                 total_cost_usd=self._cost_usd,
+                uptime_seconds=uptime,
                 per_model=per_model,
             )
