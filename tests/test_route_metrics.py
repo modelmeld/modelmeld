@@ -74,6 +74,9 @@ async def test_fresh_app_has_zeroed_metrics() -> None:
     assert body["total_output_tokens"] == 0
     assert body["total_tokens"] == 0
     assert body["total_cost_usd"] == 0.0
+    assert "uptime_seconds" in body
+    assert isinstance(body["uptime_seconds"], (int, float))
+    assert body["uptime_seconds"] >= 0.0
     assert body["per_model"] == {}
 
 
@@ -127,10 +130,34 @@ async def test_metrics_json_shape() -> None:
     for key in (
         "chat_completions_count", "messages_count", "responses_count",
         "total_request_count", "total_input_tokens", "total_output_tokens",
-        "total_tokens", "total_cost_usd", "per_model",
+        "total_tokens", "total_cost_usd", "uptime_seconds", "per_model",
     ):
         assert key in body, f"missing key: {key}"
     assert isinstance(body["per_model"], dict)
+    assert isinstance(body["uptime_seconds"], (int, float))
+
+
+async def test_uptime_seconds_tracks_elapsed_time() -> None:
+    """uptime_seconds must reflect real elapsed time, not a constant. Read twice
+    across a sleep and require a STRICT increase — a hardcoded/zeroed value (the
+    obvious regression) would pass a `>=` check but fails this."""
+    import asyncio
+
+    app = build_app(adapter=_EchoAdapter())
+    async with _client(app) as client:
+        r1 = await client.get("/metrics")
+        uptime1 = r1.json()["uptime_seconds"]
+
+        await asyncio.sleep(0.05)
+
+        r2 = await client.get("/metrics")
+        uptime2 = r2.json()["uptime_seconds"]
+
+    assert isinstance(uptime1, (int, float))
+    assert isinstance(uptime2, (int, float))
+    assert uptime1 >= 0.0
+    # Strictly greater after a real delay: proves it is wired to a live clock.
+    assert uptime2 > uptime1
 
 
 def test_collector_accounting_and_cost() -> None:
