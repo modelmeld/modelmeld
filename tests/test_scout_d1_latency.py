@@ -181,20 +181,35 @@ def test_latency_does_not_override_genuine_cost_gap() -> None:
     assert ranked[0][0].model_id == "qwenish"
 
 
-def test_unmeasured_row_is_noop_under_latency() -> None:
-    # A row with no latency keeps plain cost; it is not treated as instant.
-    measured_fast = _entry("a", "p1", 1.0, 1.0, ttft=0.2, tps=200.0)
-    unmeasured_cheaper = _entry("b", "p2", 0.9, 0.9)  # cheaper, no latency
-    reg = MultiProviderModelRegistry([measured_fast, unmeasured_cheaper])
+def test_unmeasured_row_imputed_median_not_instant() -> None:
+    # Three equal-cost models: fast (low latency), slow (high latency), and an
+    # unmeasured one. The unmeasured row is imputed the MEDIAN latency of the
+    # measured rows, so it sorts BETWEEN fast and slow. Under the old "no
+    # latency -> no penalty" behavior it would have been treated as instant and
+    # ranked FIRST (a free pass), which is the perverse outcome this fixes.
+    fast = _entry("fast", "p1", 1.0, 1.0, ttft=0.1, tps=500.0)   # ~0.36s
+    slow = _entry("slow", "p2", 1.0, 1.0, ttft=3.0, tps=20.0)    # ~9.4s
+    unmeasured = _entry("unmeasured", "p3", 1.0, 1.0)            # no latency
+    reg = MultiProviderModelRegistry([fast, slow, unmeasured])
     ranked = reg.rank(
         "coding",
         latency_weight=0.02,
         latency_ref_input_tokens=61000,
         latency_ref_output_tokens=128,
     )
-    # unmeasured stays at its plain (cheaper) cost -> still first; latency
-    # never fabricates a speed advantage for the measured row.
-    assert ranked[0][0].model_id == "b"
+    assert [e.model_id for e, _ in ranked] == ["fast", "unmeasured", "slow"]
+
+
+def test_no_candidate_has_latency_falls_back_to_cost() -> None:
+    # If NOTHING is measured, ranking is plain cost (no imputation possible).
+    a = _entry("a", "p1", 2.0, 2.0)
+    b = _entry("b", "p2", 1.0, 1.0)
+    reg = MultiProviderModelRegistry([a, b])
+    ranked = reg.rank(
+        "coding", latency_weight=0.02,
+        latency_ref_input_tokens=61000, latency_ref_output_tokens=128,
+    )
+    assert [e.model_id for e, _ in ranked] == ["b", "a"]  # pure cost
 
 
 # ---------------------------------------------------------------------------

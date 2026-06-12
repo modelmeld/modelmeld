@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import statistics
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from importlib import resources
@@ -154,26 +155,51 @@ class ModelEntry:
         return ttft + output_tokens / self.median_output_tps
 
 
-def _effective_cost_key(
-    entry: ModelEntry,
-    blended_cost: float,
+def _sort_latency_adjusted(
+    result: list[tuple[ModelEntry, float]],
     latency_weight: float,
     ref_input_tokens: int,
     ref_output_tokens: int,
-) -> float:
-    """Latency-adjusted sort key (D1). Shared by base + multi-provider rank().
+) -> list[tuple[ModelEntry, float]]:
+    """Sort ``(entry, blended_cost)`` pairs by latency-adjusted cost (D1).
+    Shared by base + multi-provider ``rank()``.
 
-    ``latency_weight <= 0`` returns the plain blended cost (cost-only ordering).
-    Otherwise penalize cost by estimated per-turn latency; rows with no latency
-    signal (``estimated_turn_latency_s`` is None) keep their plain cost so they
-    are neither rewarded nor punished for missing data.
+    ``latency_weight <= 0`` → plain cost order (byte-identical to the old
+    cost-only ranking; this is what keeps ``-saver`` unchanged). Otherwise the
+    key is ``blended_cost * (1 + latency_weight * latency_s)``.
+
+    **Missing-data handling (the load-bearing bit):** a candidate with no
+    latency signal is imputed the **median latency of the measured candidates**
+    — NOT treated as instant. Earlier this gave unmeasured rows a free pass
+    (factor 1.0), which under partial coverage perversely rewarded exactly the
+    models we hadn't measured (e.g. the cheapest default pick) and penalized the
+    ones we had. Median imputation makes missing data *neutral*: an unmeasured
+    model ranks as an average-latency one, never an advantaged one. If NO
+    candidate has latency data, falls back to plain cost. The returned pair
+    keeps the real blended cost (not the effective key), so cost reporting stays
+    truthful; the sort is stable.
     """
-    if latency_weight <= 0:
-        return blended_cost
-    latency_s = entry.estimated_turn_latency_s(ref_input_tokens, ref_output_tokens)
-    if latency_s is None:
-        return blended_cost
-    return blended_cost * (1.0 + latency_weight * latency_s)
+    if latency_weight <= 0 or not result:
+        return sorted(result, key=lambda pair: pair[1])
+    latencies = [
+        e.estimated_turn_latency_s(ref_input_tokens, ref_output_tokens)
+        for e, _ in result
+    ]
+    measured = [lat for lat in latencies if lat is not None]
+    if not measured:
+        return sorted(result, key=lambda pair: pair[1])
+    median_lat = statistics.median(measured)
+
+    def _effective(indexed: tuple[int, tuple[ModelEntry, float]]) -> float:
+        i, (_, cost) = indexed
+        # Bind to a local so the None-narrowing sticks (pyright doesn't retain
+        # narrowing across a re-evaluated subscript).
+        measured_lat = latencies[i]
+        lat = measured_lat if measured_lat is not None else median_lat
+        return cost * (1.0 + latency_weight * lat)
+
+    ordered = sorted(enumerate(result), key=_effective)
+    return [pair for _, pair in ordered]
 
 
 class ModelRegistry:
@@ -350,13 +376,10 @@ class ModelRegistry:
             if not entry.meets_threshold(task_category, quality_threshold):
                 continue
             result.append((entry, entry.blended_cost_per_m()))
-        result.sort(
-            key=lambda pair: _effective_cost_key(
-                pair[0], pair[1], latency_weight,
-                latency_ref_input_tokens, latency_ref_output_tokens,
-            )
+        return _sort_latency_adjusted(
+            result, latency_weight,
+            latency_ref_input_tokens, latency_ref_output_tokens,
         )
-        return result
 
 
 # ----------------------------------------------------------------------

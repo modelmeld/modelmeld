@@ -36,7 +36,7 @@ from importlib import resources
 from modelmeld.scout.registry import (
     ModelEntry,
     ModelRegistry,
-    _effective_cost_key,
+    _sort_latency_adjusted,
 )
 
 logger = logging.getLogger(__name__)
@@ -146,13 +146,10 @@ class MultiProviderModelRegistry(ModelRegistry):
             if not entry.meets_threshold(task_category, quality_threshold):
                 continue
             result.append((entry, entry.blended_cost_per_m()))
-        result.sort(
-            key=lambda pair: _effective_cost_key(
-                pair[0], pair[1], latency_weight,
-                latency_ref_input_tokens, latency_ref_output_tokens,
-            )
+        return _sort_latency_adjusted(
+            result, latency_weight,
+            latency_ref_input_tokens, latency_ref_output_tokens,
         )
-        return result
 
     def pick(
         self,
