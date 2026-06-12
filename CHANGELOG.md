@@ -14,6 +14,13 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.16.1](https://github.com/modelmeld/modelmeld/compare/v0.16.0...v0.16.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* **routing:** -quality picks strongest model on agentic work, not cheapest frontier ([#92](https://github.com/modelmeld/modelmeld/issues/92)) ([1621b28](https://github.com/modelmeld/modelmeld/commit/1621b2856d237068af203d2dddca0784bed019c6))
+
 ## [0.16.0](https://github.com/modelmeld/modelmeld/compare/v0.15.0...v0.16.0) (2026-06-12)
 
 
