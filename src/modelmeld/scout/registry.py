@@ -84,6 +84,29 @@ class ModelEntry:
     # e.g. context-management/compaction; decides which betas survive a
     # Claude->Claude substitution.
     supported_betas: tuple[str, ...] = ()
+    # --- Latency signal (D1 of the routing-objective redesign) ---
+    # Per-token price selects against the thing that governs the agentic-coding
+    # experience: time-to-complete. These two fields let the scout rank on
+    # latency-adjusted cost (see `estimated_turn_latency_s` + the scout's D1
+    # term). Both default None ("unknown") so a registry/seed without latency
+    # data behaves exactly as before — the scout's latency factor is a no-op
+    # for entries that lack it.
+    #
+    # `median_ttft_s` — median time-to-first-token in seconds. Prefill-dominated;
+    # the relevant axis for agentic turns (output is tiny, input is ~99%).
+    # `median_output_tps` — median output tokens/second (decode throughput).
+    # `latency_source` — provenance, e.g. "artificial_analysis@medium" (AA's
+    # ~1k-token reference input) or "measured" (first-party gateway telemetry).
+    #
+    # CAVEAT (load-bearing, see docs/design-routing-objective.md): public AA
+    # latency is measured at a small reference input (~1k tokens) on AA's
+    # reference provider — a COARSE proxy for our ~61k-token agentic prefill,
+    # and NOT per-serving-provider. v1 ships this model-level signal; the
+    # per-(model x provider) prefill latency that resolves provider-backend
+    # roulette comes from a later first-party-telemetry pass.
+    median_ttft_s: float | None = None
+    median_output_tps: float | None = None
+    latency_source: str = ""
 
     def blended_cost_per_m(
         self,
@@ -97,6 +120,60 @@ class ModelEntry:
 
     def meets_threshold(self, task: TaskCategory, threshold: float) -> bool:
         return self.task_scores.get(task, 0.0) >= threshold
+
+    def estimated_turn_latency_s(
+        self, input_tokens: int, output_tokens: int,
+    ) -> float | None:
+        """Estimate wall-clock seconds for one turn — the per-turn latency
+        signal the D1 term ranks on.
+
+        Returns None when this row carries no throughput data — callers treat
+        that as "no latency signal" (the scout's D1 factor falls back to
+        cost-only for such rows, so missing data never makes a model look
+        artificially fast).
+
+        v1 model (deliberately conservative):
+
+            median_ttft_s + output_tokens / median_output_tps
+
+        ``input_tokens`` is accepted but NOT used to extrapolate prefill time in
+        v1, on purpose. We only have public AA throughput: ``median_output_tps``
+        is *decode* speed, and prefill runs at a very different (much faster)
+        rate we cannot derive from it — dividing a ~61k-token agentic prefill by
+        decode tps over-estimates by 1-2 orders of magnitude and would let the
+        latency factor swamp cost. ``median_ttft_s`` (AA's ~1k-reference
+        time-to-first-token) is the prefill-onset proxy we *do* have; we use it
+        as the fixed base. Producing a real per-(model x provider) prefill
+        latency at agentic input sizes is the deferred first-party-telemetry
+        pass (see docs/design-routing-objective.md); ``input_tokens`` is kept in
+        the signature for that successor model.
+        """
+        if self.median_output_tps is None or self.median_output_tps <= 0:
+            return None
+        ttft = self.median_ttft_s or 0.0
+        return ttft + output_tokens / self.median_output_tps
+
+
+def _effective_cost_key(
+    entry: ModelEntry,
+    blended_cost: float,
+    latency_weight: float,
+    ref_input_tokens: int,
+    ref_output_tokens: int,
+) -> float:
+    """Latency-adjusted sort key (D1). Shared by base + multi-provider rank().
+
+    ``latency_weight <= 0`` returns the plain blended cost (cost-only ordering).
+    Otherwise penalize cost by estimated per-turn latency; rows with no latency
+    signal (``estimated_turn_latency_s`` is None) keep their plain cost so they
+    are neither rewarded nor punished for missing data.
+    """
+    if latency_weight <= 0:
+        return blended_cost
+    latency_s = entry.estimated_turn_latency_s(ref_input_tokens, ref_output_tokens)
+    if latency_s is None:
+        return blended_cost
+    return blended_cost * (1.0 + latency_weight * latency_s)
 
 
 class ModelRegistry:
@@ -145,6 +222,15 @@ class ModelRegistry:
                         if row.get("max_output_tokens") is not None else None
                     ),
                     supported_betas=tuple(row.get("supported_betas", ())),
+                    median_ttft_s=(
+                        float(row["median_ttft_s"])
+                        if row.get("median_ttft_s") is not None else None
+                    ),
+                    median_output_tps=(
+                        float(row["median_output_tps"])
+                        if row.get("median_output_tps") is not None else None
+                    ),
+                    latency_source=row.get("latency_source", ""),
                 )
             )
         return cls(entries)
@@ -229,6 +315,9 @@ class ModelRegistry:
         eligible_providers: frozenset[str] | None = None,
         min_context_window: int = 0,
         require_tool_support: bool = False,
+        latency_weight: float = 0.0,
+        latency_ref_input_tokens: int = 0,
+        latency_ref_output_tokens: int = 0,
     ) -> list[tuple[ModelEntry, float]]:
         """All eligible candidates sorted cheapest-first. Returns (entry, blended_cost) pairs.
 
@@ -237,6 +326,18 @@ class ModelRegistry:
           - provider in eligible_providers (if set)
           - context_window >= min_context_window
           - supports_tools == True (if require_tool_support)
+
+        Ordering (D1 latency term): when ``latency_weight > 0`` candidates are
+        sorted by a latency-adjusted *effective* cost
+        ``blended_cost * (1 + latency_weight * estimated_turn_latency_s)`` — a
+        cheaper-but-slower model loses to a slightly-pricier-but-faster one for
+        the agentic shape described by ``latency_ref_*_tokens``. Rows without
+        latency data fall back to plain cost (no reward/penalty), so a partial
+        registry never makes an unmeasured model look artificially fast. The
+        returned pair's second element is always the *real* blended cost (not
+        the effective key), so callers' cost reporting stays truthful.
+        ``latency_weight == 0`` (the default) is byte-identical to the old
+        cost-only ranking — this is what keeps ``-saver`` ranking unchanged.
         """
         result: list[tuple[ModelEntry, float]] = []
         for entry in self._by_id.values():
@@ -249,7 +350,12 @@ class ModelRegistry:
             if not entry.meets_threshold(task_category, quality_threshold):
                 continue
             result.append((entry, entry.blended_cost_per_m()))
-        result.sort(key=lambda pair: pair[1])
+        result.sort(
+            key=lambda pair: _effective_cost_key(
+                pair[0], pair[1], latency_weight,
+                latency_ref_input_tokens, latency_ref_output_tokens,
+            )
+        )
         return result
 
 

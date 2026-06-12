@@ -33,7 +33,11 @@ import json
 import logging
 from importlib import resources
 
-from modelmeld.scout.registry import ModelEntry, ModelRegistry
+from modelmeld.scout.registry import (
+    ModelEntry,
+    ModelRegistry,
+    _effective_cost_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +114,9 @@ class MultiProviderModelRegistry(ModelRegistry):
         eligible_providers: frozenset[str] | None = None,
         min_context_window: int = 0,
         require_tool_support: bool = False,
+        latency_weight: float = 0.0,
+        latency_ref_input_tokens: int = 0,
+        latency_ref_output_tokens: int = 0,
     ) -> list[tuple[ModelEntry, float]]:
         """Multi-provider rank: iterates over every ``(model_id, provider)``
         row, not just the base's collapsed ``_by_id`` representatives.
@@ -117,9 +124,16 @@ class MultiProviderModelRegistry(ModelRegistry):
         Required for ``eligible_providers`` filtering to actually pick the
         right provider when a model has multiple rows. Without this
         override, the base class only sees one entry per model_id (the
-        last-inserted one) — so a customer who configured only Fireworks
-        would have qwen3-coder-30b's Fireworks row hidden if vLLM was
-        inserted last in the registry.
+        last-inserted one) — so a customer who configured only one upstream
+        would have a model's other-provider rows hidden if a different
+        provider was inserted last in the registry.
+
+        Latency (D1) ordering is identical to the base class — see
+        ``ModelRegistry.rank`` and ``_effective_cost_key``. Because each
+        ``(model_id, provider)`` row carries its own latency fields, the
+        latency term ranks *per provider* once per-provider latency data
+        lands; with model-level seed data the rows for one model share a
+        latency and the term reduces to model-level ordering.
         """
         result: list[tuple[ModelEntry, float]] = []
         for entry in self._by_key.values():
@@ -132,7 +146,12 @@ class MultiProviderModelRegistry(ModelRegistry):
             if not entry.meets_threshold(task_category, quality_threshold):
                 continue
             result.append((entry, entry.blended_cost_per_m()))
-        result.sort(key=lambda pair: pair[1])
+        result.sort(
+            key=lambda pair: _effective_cost_key(
+                pair[0], pair[1], latency_weight,
+                latency_ref_input_tokens, latency_ref_output_tokens,
+            )
+        )
         return result
 
     def pick(
