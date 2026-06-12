@@ -102,6 +102,12 @@ _AUTO_LATENCY_WEIGHT = 0.02
 # small fixed reference.
 _AGENTIC_REF_OUTPUT_TOKENS = 128
 
+# Capability category `-quality` ranks agentic (tool-bearing) requests by.
+# Sourced from AA's Coding Index via the live registry feed (a sustained-
+# agentic-coding success-rate prior); absent in the OSS snapshot, where the
+# scout falls back per-model to the request's category score.
+_AGENTIC_CAPABILITY_CATEGORY = "agentic_coding"
+
 # Optional dependency: framework-supplied hints. Imported under
 # TYPE_CHECKING to avoid an import cycle (api.routing_hints imports task_category).
 from typing import TYPE_CHECKING
@@ -399,19 +405,31 @@ class CapabilityScout:
         # cheapest frontier model above threshold — a small/fast frontier model
         # that no-ops on sustained agentic loops (the confirmed `-quality`
         # agentic bug: 24/30 turns to a Haiku-tier model, zero edits). Re-rank
-        # by capability (the request's category score) descending, with cost as
-        # the tie-break so equally-capable models still prefer the cheaper one.
-        # Scoped to QUALITY + tools: simple QUALITY requests keep cost-first
-        # (cheapest frontier clearing the bar is correct there). Interim signal
-        # is the category task_score; switches to the AA `agentic_coding` prior
-        # once the live feed carries it.
+        # by capability descending, with cost as the tie-break so equally-capable
+        # models still prefer the cheaper one. Scoped to QUALITY + tools: simple
+        # QUALITY requests keep cost-first (cheapest frontier clearing the bar is
+        # correct there).
+        #
+        # Capability signal: prefer the `agentic_coding` prior (AA Coding Index
+        # — a sustained-agentic-coding SUCCESS-rate signal, the right axis for
+        # "won't no-op"), falling back per-model to the request's category score
+        # when a model lacks it (e.g. the OSS snapshot ships no agentic_coding;
+        # only the live feed carries it). Both are 0..1 capability scores; the
+        # mix is monotonic and degrades gracefully to the prior behavior when
+        # the prior is absent.
         quality_rationale = ""
         if policy is ModelMeldPolicy.QUALITY and require_tool_support:
-            ranked = sorted(
-                ranked,
-                key=lambda pair: (-pair[0].task_scores.get(category, 0.0), pair[1]),
+            def _capability(entry: ModelEntry) -> float:
+                ts = entry.task_scores
+                return ts.get(_AGENTIC_CAPABILITY_CATEGORY, ts.get(category, 0.0))
+
+            ranked = sorted(ranked, key=lambda pair: (-_capability(pair[0]), pair[1]))
+            signal = (
+                _AGENTIC_CAPABILITY_CATEGORY
+                if any(_AGENTIC_CAPABILITY_CATEGORY in e.task_scores for e, _ in ranked)
+                else category
             )
-            quality_rationale = "quality_agentic=capability_first"
+            quality_rationale = f"quality_agentic=capability_first(by={signal})"
 
         chosen_entry, chosen_cost = ranked[0]
         fallbacks: list[str] = [
