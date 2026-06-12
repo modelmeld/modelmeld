@@ -14,6 +14,20 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.16.0](https://github.com/modelmeld/modelmeld/compare/v0.15.0...v0.16.0) (2026-06-12)
+
+
+### Features
+
+* **metrics:** expose uptime_seconds on GET /metrics ([#88](https://github.com/modelmeld/modelmeld/issues/88)) ([c65b6fc](https://github.com/modelmeld/modelmeld/commit/c65b6fc8dc9b9a79fe0ea24d7adba699ffc91ef9))
+* **routing:** env-gated model pin for end-to-end model benchmarking ([#89](https://github.com/modelmeld/modelmeld/issues/89)) ([cd21895](https://github.com/modelmeld/modelmeld/commit/cd2189505ddbfa546baefea0a1a6332347776b67))
+* **routing:** latency-aware ranking for auto-policy agentic requests ([#90](https://github.com/modelmeld/modelmeld/issues/90)) ([05f54e9](https://github.com/modelmeld/modelmeld/commit/05f54e9c07f70471ca5c4aff40815d9a61d29d48))
+
+
+### Bug Fixes
+
+* **api:** return canonical routed model in /v1/messages response body ([#86](https://github.com/modelmeld/modelmeld/issues/86)) ([22a56a4](https://github.com/modelmeld/modelmeld/commit/22a56a48b42b012769c06cea2d56838ecea15a20))
+
 ## [0.15.0](https://github.com/modelmeld/modelmeld/compare/v0.14.0...v0.15.0) (2026-06-10)
 
 
