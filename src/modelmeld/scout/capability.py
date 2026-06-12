@@ -393,6 +393,26 @@ class CapabilityScout:
                 eligible_providers=eligible,
             )
 
+        # `-quality` on agentic (tool-bearing) work: pick the STRONGEST eligible
+        # model, not the cheapest one clearing the bar. The default ranking is
+        # cost-ascending, so frontier-restricted QUALITY otherwise selects the
+        # cheapest frontier model above threshold — a small/fast frontier model
+        # that no-ops on sustained agentic loops (the confirmed `-quality`
+        # agentic bug: 24/30 turns to a Haiku-tier model, zero edits). Re-rank
+        # by capability (the request's category score) descending, with cost as
+        # the tie-break so equally-capable models still prefer the cheaper one.
+        # Scoped to QUALITY + tools: simple QUALITY requests keep cost-first
+        # (cheapest frontier clearing the bar is correct there). Interim signal
+        # is the category task_score; switches to the AA `agentic_coding` prior
+        # once the live feed carries it.
+        quality_rationale = ""
+        if policy is ModelMeldPolicy.QUALITY and require_tool_support:
+            ranked = sorted(
+                ranked,
+                key=lambda pair: (-pair[0].task_scores.get(category, 0.0), pair[1]),
+            )
+            quality_rationale = "quality_agentic=capability_first"
+
         chosen_entry, chosen_cost = ranked[0]
         fallbacks: list[str] = [
             entry.model_id for entry, _ in ranked[1 : 1 + self.fallback_depth]
@@ -410,6 +430,8 @@ class CapabilityScout:
             rationale = f"{rationale};{bias_rationale}"
         if latency_rationale:
             rationale = f"{rationale};{latency_rationale}"
+        if quality_rationale:
+            rationale = f"{rationale};{quality_rationale}"
 
         return CapabilityDecision(
             chosen_model_id=chosen_entry.model_id,
