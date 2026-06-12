@@ -27,14 +27,20 @@ QUALITY = "anthropic/modelmeld-quality"
 AUTO = "anthropic/modelmeld-auto"
 
 
-def _frontier(model_id: str, provider: str, cost_in: float, cost_out: float, score: float) -> ModelEntry:
+def _frontier(
+    model_id: str, provider: str, cost_in: float, cost_out: float, score: float,
+    *, tool_use: float | None = None, agentic: float | None = None,
+) -> ModelEntry:
+    ts = {"coding": score, "tool_use": tool_use if tool_use is not None else score}
+    if agentic is not None:
+        ts["agentic_coding"] = agentic
     return ModelEntry(
         model_id=model_id,
         provider=provider,                       # anthropic/openai = frontier tier
         context_window=200000,
         cost_per_m_input=cost_in,
         cost_per_m_output=cost_out,
-        task_scores={"coding": score, "tool_use": score},
+        task_scores=ts,
     )
 
 
@@ -98,3 +104,23 @@ async def test_auto_with_tools_does_not_get_quality_rerank() -> None:
     scout = _scout(_weak_cheap(), _strong_pricey())
     decision = await scout.choose(_req(AUTO, with_tools=True))
     assert "quality_agentic=capability_first" not in decision.rationale
+
+
+async def test_quality_ranks_by_agentic_coding_when_present() -> None:
+    # agentic_coding DISAGREES with tool_use: by tool_use A wins, by the
+    # agentic prior B wins. -quality must prefer the agentic prior.
+    a = _frontier("high-tooluse", "openai", 1.0, 3.0, 0.8, tool_use=0.90, agentic=0.50)
+    b = _frontier("high-agentic", "anthropic", 3.0, 15.0, 0.8, tool_use=0.70, agentic=0.85)
+    scout = _scout(a, b)
+    decision = await scout.choose(_req(QUALITY, with_tools=True))
+    assert decision.chosen_model_id == "high-agentic"
+    assert "by=agentic_coding" in decision.rationale
+
+
+async def test_quality_falls_back_to_category_without_agentic_prior() -> None:
+    # No model carries agentic_coding (OSS snapshot) -> fall back to the
+    # category score; behavior + rationale reflect the fallback signal.
+    scout = _scout(_weak_cheap(), _strong_pricey())
+    decision = await scout.choose(_req(QUALITY, with_tools=True))
+    assert decision.chosen_model_id == "big-frontier"   # strongest by tool_use
+    assert "by=tool_use" in decision.rationale
