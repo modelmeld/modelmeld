@@ -29,7 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run release-please
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
+        # Pinned to v4.1.3, NOT v5: v5 dropped support for the `signoff:` input
+        # below (it silently ignores it), which left the release PR commit
+        # without a DCO Signed-off-by trailer and failed the DCO check on the
+        # 0.16.1 PR. v4 still honors signoff. Migrating to v5 requires moving
+        # the signoff option into a release-please manifest config file
+        # (release-please-config.json) — tracked separately. v4 runs on Node 20
+        # (deprecated by GitHub 2026-09-16); revisit before then.
+        uses: googleapis/release-please-action@db8f2c60ee802b3748b512940dde88eabd7b7e01  # v4.1.3
         with:
           # Use a PAT (or GitHub App token) instead of the default
           # GITHUB_TOKEN. Tag pushes made by GITHUB_TOKEN do NOT fire
