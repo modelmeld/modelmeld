@@ -14,6 +14,18 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.17.0](https://github.com/modelmeld/modelmeld/compare/v0.16.1...v0.17.0) (2026-06-12)
+
+
+### Features
+
+* **routing:** -quality ranks on the agentic_coding prior when available ([#96](https://github.com/modelmeld/modelmeld/issues/96)) ([ce97658](https://github.com/modelmeld/modelmeld/commit/ce976580efc25bcd3e5fa4e0dfe9200bb49fe988))
+
+
+### Bug Fixes
+
+* **routing:** D1 imputes median latency for unmeasured models, not zero ([#98](https://github.com/modelmeld/modelmeld/issues/98)) ([f5972aa](https://github.com/modelmeld/modelmeld/commit/f5972aa754bb7ad9082eaf916f55897f873531c8))
+
 ## [0.16.1](https://github.com/modelmeld/modelmeld/compare/v0.16.0...v0.16.1) (2026-06-12)
 
 
