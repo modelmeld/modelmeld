@@ -80,6 +80,28 @@ _AUTOCOMPLETE_MAX_INPUT_CHARS = 4000
 # "trivial-fast" tier's task scores.
 _AUTOCOMPLETE_QUALITY_THRESHOLD = 0.55
 
+# --- D1 latency term (routing-objective redesign) ---
+# Applied ONLY to `-auto` + tool-bearing (agentic) requests; `-saver` stays
+# pure cost (predictable cost ceiling is its wedge) and `-quality` is
+# frontier-first. The scout ranks eligible candidates by latency-adjusted
+# cost: blended_cost * (1 + _AUTO_LATENCY_WEIGHT * estimated_turn_latency_s).
+#
+# Weight calibration (deliberately modest — see the pressure-test in
+# docs/design-routing-objective.md): at ~0.02/s a 15 s/turn model carries a
+# ~+30% effective-cost penalty vs ~+14% for a 7 s/turn one. This BREAKS
+# NEAR-COST TIES toward the faster option (the per-(model x provider) case:
+# same model + same cost on two backends, faster backend wins) but by design
+# does NOT override a large genuine cost advantage. It is NOT meant to flip a
+# 2x-cheaper-but-slower model on its own — that model's real problem is
+# reliability + turns-to-converge (RO-3) and mid-flight escalation (RO-5),
+# not per-turn latency. Tuning this weight to force such a flip would be a
+# savings claim that doesn't survive pressure-testing.
+_AUTO_LATENCY_WEIGHT = 0.02
+# Agentic turns emit little output (D-1 telemetry: ~91 output tokens/turn vs
+# ~61k input). Input size is taken from the actual request; output uses this
+# small fixed reference.
+_AGENTIC_REF_OUTPUT_TOKENS = 128
+
 # Optional dependency: framework-supplied hints. Imported under
 # TYPE_CHECKING to avoid an import cycle (api.routing_hints imports task_category).
 from typing import TYPE_CHECKING
@@ -340,12 +362,29 @@ class CapabilityScout:
         require_tool_support = bool(request.tools)
         min_ctx_required = self._required_context_window(request)
 
+        # D1 latency term: only `-auto` + tool-bearing (agentic) requests rank
+        # on latency-adjusted cost. `-saver` and non-alias requests stay pure
+        # cost (latency_weight=0 → byte-identical to the old ranking);
+        # `-quality` is frontier-first and not latency-ranked in v1.
+        latency_weight = 0.0
+        latency_ref_input = 0
+        latency_rationale = ""
+        if policy is ModelMeldPolicy.AUTO and require_tool_support:
+            latency_weight = _AUTO_LATENCY_WEIGHT
+            latency_ref_input = self._estimated_input_tokens(request)
+            latency_rationale = (
+                f"d1=latency(w={_AUTO_LATENCY_WEIGHT};ref_in={latency_ref_input})"
+            )
+
         ranked = self.registry.rank(
             task_category=category,
             quality_threshold=threshold,
             eligible_providers=eligible,
             min_context_window=min_ctx_required,
             require_tool_support=require_tool_support,
+            latency_weight=latency_weight,
+            latency_ref_input_tokens=latency_ref_input,
+            latency_ref_output_tokens=_AGENTIC_REF_OUTPUT_TOKENS,
         )
         if not ranked:
             raise NoEligibleModelError(
@@ -369,6 +408,8 @@ class CapabilityScout:
             rationale = f"{rationale};{policy_rationale}"
         if bias_rationale:
             rationale = f"{rationale};{bias_rationale}"
+        if latency_rationale:
+            rationale = f"{rationale};{latency_rationale}"
 
         return CapabilityDecision(
             chosen_model_id=chosen_entry.model_id,
@@ -486,20 +527,11 @@ class CapabilityScout:
                 return False  # short-circuit on first overage
         return char_count <= _AUTOCOMPLETE_MAX_INPUT_CHARS
 
-    def _required_context_window(self, request: ChatCompletionRequest) -> int:
-        """Estimate the context window the request demands.
-
-        Counts input chars across all message contents, divides by
-        ~4 chars/token (the conservative-for-code estimate per the
-        litellm canonical pattern), adds `max_tokens` budget for the
-        response, then applies 1.2× headroom for prompt-engineering
-        overhead (system prompt template, message role tokens, etc.).
-
-        Returns 0 when the request is small enough that the filter is
-        a no-op. The filter only kicks in when input + response
-        plausibly exceeds smaller models' context windows
-        (~16K-32K range).
-        """
+    def _estimated_input_tokens(self, request: ChatCompletionRequest) -> int:
+        """Rough input-token estimate: message text + tool-def schemas, at
+        ~4 chars/token (conservative-for-code, per the litellm canonical
+        pattern). Used by both the context-window filter and the D1 latency
+        term (as the per-turn prefill size)."""
         char_count = 0
         for msg in request.messages:
             content = getattr(msg, "content", None)
@@ -523,6 +555,20 @@ class CapabilityScout:
                     char_count += 200  # rough estimate for unknown tool shape
                 if hasattr(tool, "function") and hasattr(tool.function, "description"):
                     char_count += len(tool.function.description or "")
-        input_tokens = char_count // _CHARS_PER_TOKEN_ESTIMATE
+        return char_count // _CHARS_PER_TOKEN_ESTIMATE
+
+    def _required_context_window(self, request: ChatCompletionRequest) -> int:
+        """Estimate the context window the request demands.
+
+        Input tokens (`_estimated_input_tokens`) + `max_tokens` response
+        budget, times 1.2× headroom for prompt-engineering overhead (system
+        prompt template, message role tokens, etc.).
+
+        Returns 0 when the request is small enough that the filter is
+        a no-op. The filter only kicks in when input + response
+        plausibly exceeds smaller models' context windows
+        (~16K-32K range).
+        """
+        input_tokens = self._estimated_input_tokens(request)
         response_budget = request.max_tokens or 1024
         return int((input_tokens + response_budget) * _CONTEXT_WINDOW_HEADROOM_MULT)
