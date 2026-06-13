@@ -241,6 +241,36 @@
       "cost_per_m_output": 3.41,
       "task_scores": {"tool_use": 0.85},
       "source": "modelmeld_tool_eval_v1_2026_06_13"
+    },
+    {
+      "model_id": "qwen3.7-plus",
+      "provider": "openrouter",
+      "provider_model_id": "qwen/qwen3.7-plus",
+      "context_window": 1000000,
+      "cost_per_m_input": 0.32,
+      "cost_per_m_output": 1.28,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
+    },
+    {
+      "model_id": "mimo-v2.5",
+      "provider": "openrouter",
+      "provider_model_id": "xiaomi/mimo-v2.5",
+      "context_window": 1048576,
+      "cost_per_m_input": 0.14,
+      "cost_per_m_output": 0.28,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
+    },
+    {
+      "model_id": "hy3-preview",
+      "provider": "openrouter",
+      "provider_model_id": "tencent/hy3-preview",
+      "context_window": 262144,
+      "cost_per_m_input": 0.063,
+      "cost_per_m_output": 0.21,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
     }
   ]
 }
