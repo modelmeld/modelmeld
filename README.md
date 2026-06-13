@@ -11,26 +11,45 @@
 
 ## Quickstart
 
+Run the gateway yourself and route real OSS models in a couple of
+minutes. You bring a provider key (OpenRouter is the easiest — one key,
+many open-weight models, pay-as-you-go); ModelMeld picks the cheapest
+model that clears the quality bar per request.
+
 ```bash
-pip install modelmeld
-modelmeld setup --tool claude-code
+pip install 'modelmeld[anthropic,openai]'
+modelmeld setup --self-host
 ```
 
-The setup CLI prompts for your ModelMeld API key (and optionally an
-Anthropic key for BYOK frontier routing), writes a sourceable shell
-script, pre-configures Claude Code's `/model` picker with the three
-ModelMeld policies, and smoke-tests the routing pipeline before
-declaring success.
+The wizard prompts for whichever provider keys you have (OpenRouter /
+Fireworks / Together for cloud-OSS routing, an optional Anthropic /
+OpenAI key for frontier escalation, or a local vLLM endpoint), enables
+capability routing, pre-configures Claude Code's `/model` picker, and —
+before declaring success — boots the gateway and **proves a real OSS
+model served a request** (it fails loudly rather than leaving you on a
+silent no-op).
 
-Then in your shell:
+Then, in two shells:
 
 ```bash
+# shell 1 — run the gateway
+source ~/.modelmeld/modelmeld-gateway.env
+uvicorn modelmeld.api.server:app --host 0.0.0.0 --port 8080
+
+# shell 2 — point Claude Code at it
 source ~/.modelmeld/setup-claude-code.sh
 claude
 ```
 
 In the Claude Code TUI, type `/model` → pick `ModelMeld — Auto` (or
-`Saver` / `Quality`). That's it. Self-hosting? See [Self-host](#self-host) below.
+`Saver` / `Quality`). No provider key yet? `modelmeld setup --self-host
+--demo` points you at the cheapest one-key on-ramp. Diagnose anytime
+with `modelmeld doctor`.
+
+> **Hosted (managed) gateway** — point your tool at our URL and skip
+> running anything yourself. Currently **invite-only beta**:
+> [request access](https://modelmeld.ai). Once you have a key,
+> `modelmeld setup --tool claude-code` configures the hosted path.
 
 ## Anthropic prompt caching, end-to-end
 
@@ -142,21 +161,32 @@ Honest non-coverage list for the v1 OSS API surface:
   current `default_registry.json` snapshot ship as the defaults. All
   tunable via constructor args.
 
-## Self-host
+## Self-host (manual config)
 
-`modelmeld setup` configures your tool against the hosted gateway at
-`api.modelmeld.ai`. To run the gateway yourself instead:
+The [Quickstart](#quickstart) wizard is the recommended path — it writes
+the config below for you and verifies real routing. To wire it by hand:
+
+The gateway reads `MODELMELD_`-prefixed env vars. **Two settings are
+required for real routing** — without them the gateway falls back to a
+no-op stub adapter that returns canned replies to every request:
 
 ```bash
 pip install 'modelmeld[anthropic,openai]'
-export ANTHROPIC_API_KEY=sk-ant-…   # your real Anthropic key
-export OPENAI_API_KEY=sk-…           # your real OpenAI key (optional)
+
+# 1. Capability routing (the scout picks a model per request).
+export MODELMELD_ROUTING_POLICY=capability
+# 2. At least one provider key (note the MODELMELD_ prefix):
+export MODELMELD_OPENROUTER_API_KEY=sk-or-…   # cloud-OSS routing
+# Optional frontier escalation for -auto / -quality:
+export MODELMELD_ANTHROPIC_API_KEY=sk-ant-…
+export MODELMELD_OPENAI_API_KEY=sk-…
+
 uvicorn modelmeld.api.server:app --host 0.0.0.0 --port 8080
 ```
 
-Then point your tool at `http://localhost:8080`. Behavior is identical
-to the hosted endpoint; you supply upstream keys via env vars instead
-of BYOK headers.
+Then point your tool at `http://localhost:8080`. In self-host you supply
+upstream keys to the gateway via these env vars (not per-request BYOK
+headers — those are for the hosted multi-tenant path).
 
 For routing across local vLLM + cloud providers, see
 [`docs/backends.md`](docs/backends.md). For full self-host operational

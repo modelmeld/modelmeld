@@ -11,6 +11,14 @@ end-to-end with cost parity vs going direct to Anthropic.
 
 ## One-command setup (recommended)
 
+> **Self-hosting?** If you're running the gateway yourself (the
+> public-today path — the hosted gateway is invite-only beta), use
+> `modelmeld setup --self-host` instead. It prompts for your provider
+> keys (OpenRouter / Fireworks / Together / vLLM), enables capability
+> routing, and verifies real OSS routing before finishing. No ModelMeld
+> API key required. See the [Quickstart](../../README.md#quickstart).
+> The hosted-gateway flow below needs a `gws_` key.
+
 ```bash
 pip install modelmeld
 modelmeld setup --tool claude-code

@@ -18,6 +18,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import socket
+import subprocess
 import sys
 import time
 import urllib.error
@@ -647,19 +649,517 @@ def _setup_codex(args: Any, base_url: str, interactive: bool) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Self-host specifics — gateway config, transient boot, real-routing smoke
+# ---------------------------------------------------------------------------
+#
+# Why this path exists: the public-today path is self-host, but the gateway
+# ships INERT. config.py defaults to routing_policy="single" +
+# upstream_provider="stub", so out of the box every request hits a no-op
+# stub adapter with no error. The documented `export ANTHROPIC_API_KEY=…;
+# uvicorn …` snippet sets neither the capability routing mode nor any
+# MODELMELD_*-prefixed provider key (config reads MODELMELD_ANTHROPIC_API_KEY,
+# not ANTHROPIC_API_KEY), so the tester silently gets stub-or-nothing and
+# never sees the OSS-routing value prop.
+#
+# The fix is config/UX, not capability — every adapter already ships and
+# `_infer_providers_from_credentials` wires keys → adapters once
+# routing_policy=capability. This wizard collects whichever provider keys
+# the tester has, writes routing_policy=capability + those keys, and — the
+# acceptance bar — boots a transient gateway and proves a real OSS provider
+# served a request (x-modelmeld-routed-to != "stub") before declaring
+# success.
+
+
+# The gateway has no auth in the OSS core (auth is the enterprise seam), but
+# Claude Code refuses to start without a non-empty ANTHROPIC_API_KEY. This
+# placeholder satisfies the client; the local gateway ignores it.
+_SELF_HOST_CLIENT_PLACEHOLDER_KEY = "sk-modelmeld-localhost-noauth"
+
+# Real OSS providers we can route to in self-host. If the smoke test's
+# x-modelmeld-routed-to is none of these (e.g. "stub"), real routing did
+# NOT happen and the gate fails.
+_OSS_PROVIDERS = ("openrouter", "fireworks", "together", "vllm", "tensorrt_llm")
+
+
+def _self_host_gateway_env_vars(
+    *,
+    openrouter_key: str | None,
+    fireworks_key: str | None,
+    together_key: str | None,
+    vllm_endpoint: str | None,
+    anthropic_key: str | None,
+    openai_key: str | None,
+) -> dict[str, str]:
+    """The MODELMELD_* env the self-host gateway needs for real routing.
+
+    Always sets capability routing — without it, the inferred provider keys
+    are ignored and the gateway stays on the single/stub default. One dict,
+    used for BOTH the persisted sourceable script AND the transient
+    smoke-test subprocess, so what we validate is exactly what we persist.
+    """
+    env: dict[str, str] = {"MODELMELD_ROUTING_POLICY": "capability"}
+    if openrouter_key:
+        env["MODELMELD_OPENROUTER_API_KEY"] = openrouter_key
+    if fireworks_key:
+        env["MODELMELD_FIREWORKS_API_KEY"] = fireworks_key
+    if together_key:
+        env["MODELMELD_TOGETHER_API_KEY"] = together_key
+    if vllm_endpoint:
+        env["MODELMELD_VLLM_ENDPOINT"] = vllm_endpoint
+    # Frontier keys live on the GATEWAY in self-host (the operator IS the
+    # user), not as per-request client BYOK headers. capability mode makes
+    # them eligible for -auto/-quality while -saver stays OSS-only.
+    if anthropic_key:
+        env["MODELMELD_ANTHROPIC_API_KEY"] = anthropic_key
+    if openai_key:
+        env["MODELMELD_OPENAI_API_KEY"] = openai_key
+    return env
+
+
+def _write_self_host_gateway_env(
+    target: Path, env_vars: dict[str, str], base_url: str,
+) -> None:
+    """Sourceable shell script of gateway env vars. Source BEFORE uvicorn."""
+    port = base_url.rsplit(":", 1)[-1] if base_url.count(":") >= 2 else "8080"
+    lines = [
+        "#!/bin/bash",
+        "# ModelMeld self-host GATEWAY config. Source this, then launch the",
+        "# gateway in the same shell:",
+        f"#   source {target}",
+        f"#   uvicorn modelmeld.api.server:app --host 0.0.0.0 --port {port}",
+        "",
+        "# Capability routing: the scout picks the cheapest model meeting the",
+        "# quality bar per request. WITHOUT this line the gateway falls back",
+        "# to a no-op stub and every request returns a canned reply.",
+    ]
+    # MODELMELD_ROUTING_POLICY first, then keys, for readability.
+    lines.append(f"export MODELMELD_ROUTING_POLICY={env_vars['MODELMELD_ROUTING_POLICY']}")
+    for key, value in env_vars.items():
+        if key == "MODELMELD_ROUTING_POLICY":
+            continue
+        lines.append(f"export {key}={value}")
+    content = "\n".join(lines) + "\n"
+    _atomic_write_text(target, content, mode=0o600)
+
+
+def _free_port() -> int:
+    """Grab a free localhost TCP port for the transient smoke-test gateway."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _wait_for_healthz(base_url: str, timeout: float = 25.0) -> bool:
+    """Poll /healthz until the transient gateway is up or timeout elapses."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            status, _hdrs, _body = _http_get(
+                f"{base_url}/healthz", headers={}, timeout=2.0,
+            )
+            if status == 200:
+                return True
+        except (urllib.error.URLError, TimeoutError, OSError):
+            pass
+        time.sleep(0.4)
+    return False
+
+
+def _boot_transient_gateway(
+    env_vars: dict[str, str],
+) -> tuple[subprocess.Popen[bytes], str]:
+    """Spawn `python -m uvicorn modelmeld.api.server:app` on a free port with
+    the collected gateway env injected.
+
+    Spawning the LITERAL command the tester runs (rather than an in-process
+    ASGI client) is deliberate: the silent-stub dead-end is specifically
+    about `uvicorn …:app`, so the smoke test must prove that exact
+    invocation does real routing.
+    """
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+    proc_env = {**os.environ, **env_vars}
+    proc = subprocess.Popen(
+        [
+            sys.executable, "-m", "uvicorn",
+            "modelmeld.api.server:app",
+            "--host", "127.0.0.1",
+            "--port", str(port),
+            "--log-level", "warning",
+        ],
+        env=proc_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    return proc, base_url
+
+
+def _smoke_test_self_host(
+    base_url: str, *, expect_oss: bool, expect_frontier: bool,
+) -> list[SmokeResult]:
+    """Self-host real-routing smoke. No api key / no BYOK header (OSS core is
+    unauthenticated; frontier is gateway-side).
+
+    Test A: GET /v1/models — gateway reachable.
+    Test B (the gate, when an OSS key was supplied): POST /v1/messages with
+      -saver. PASS iff 200 AND a real OSS provider served it
+      (x-modelmeld-routed-to in _OSS_PROVIDERS, NOT "stub") AND the body
+      isn't the stub sentinel. Green here = real OSS routing provably
+      happened.
+    Test C (when a frontier key was supplied): -quality should route to a
+      frontier model. This is the gate for a frontier-only self-host.
+    """
+    results: list[SmokeResult] = []
+
+    status, _hdrs, body = _http_get(f"{base_url}/v1/models", headers={})
+    if status == 200:
+        try:
+            n = len(json.loads(body).get("data", []))
+            results.append(SmokeResult("models discovery", True, f"{n} models advertised"))
+        except json.JSONDecodeError:
+            results.append(SmokeResult("models discovery", False, "200 but body not JSON"))
+    else:
+        results.append(SmokeResult(
+            "models discovery", False,
+            f"HTTP {status} — {body[:120].decode('utf-8', 'replace')}",
+        ))
+
+    # Verbose prompt + max_tokens>256 keeps the scout out of
+    # autocomplete-shape downgrade territory for both alias tests.
+    prompt = (
+        "I'm verifying my self-hosted ModelMeld routing setup. Please reply "
+        "with a short 2-3 sentence description of what type hints do in "
+        "Python and why they help with code quality."
+    )
+
+    # The OSS gate: a real OSS provider must serve a -saver request.
+    if expect_oss:
+        status, hdrs, body = _http_post_json(
+            f"{base_url}/v1/messages",
+            body={
+                "model": "anthropic/modelmeld-saver",
+                "max_tokens": 512,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            headers={"anthropic-version": "2023-06-01"},
+        )
+        if status == 200:
+            routed_to = (hdrs.get("x-modelmeld-routed-to") or "").lower()
+            routed_model = hdrs.get("x-modelmeld-routed-model")
+            looks_stub = routed_to == "stub" or b"stub adapter" in body.lower()
+            if routed_to in _OSS_PROVIDERS and not looks_stub:
+                results.append(SmokeResult(
+                    "real OSS routing (-saver)", True,
+                    f"served by {routed_to} → {routed_model or 'unknown model'}",
+                    routed_model=routed_model,
+                ))
+            elif looks_stub:
+                results.append(SmokeResult(
+                    "real OSS routing (-saver)", False,
+                    "served by the STUB adapter — no real model was called. "
+                    "MODELMELD_ROUTING_POLICY=capability + a provider key didn't "
+                    "take effect. Re-run `modelmeld setup --self-host`.",
+                ))
+            else:
+                results.append(SmokeResult(
+                    "real OSS routing (-saver)", False,
+                    f"routed to unexpected provider {routed_to!r} "
+                    f"(model {routed_model!r}) — expected one of {_OSS_PROVIDERS}",
+                ))
+        else:
+            try:
+                err_body: Any = json.loads(body)
+            except Exception:
+                err_body = body[:200].decode("utf-8", "replace")
+            results.append(SmokeResult(
+                "real OSS routing (-saver)", False,
+                f"HTTP {status}: {err_body} — check the provider key is valid "
+                "(a bad key surfaces as a 401/502 from the upstream provider).",
+            ))
+
+    if expect_frontier:
+        status, hdrs, body = _http_post_json(
+            f"{base_url}/v1/messages",
+            body={
+                "model": "anthropic/modelmeld-quality",
+                "max_tokens": 512,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            headers={"anthropic-version": "2023-06-01"},
+        )
+        if status == 200:
+            routed_to = (hdrs.get("x-modelmeld-routed-to") or "").lower()
+            routed_model = hdrs.get("x-modelmeld-routed-model") or ""
+            is_frontier = routed_to in ("anthropic", "openai") or (
+                routed_model.startswith("claude-") or routed_model.startswith("gpt-")
+            )
+            results.append(SmokeResult(
+                "frontier routing (-quality)", is_frontier,
+                f"served by {routed_to} → {routed_model or 'unknown model'}"
+                + ("" if is_frontier else " (expected a frontier model)"),
+                routed_model=routed_model or None,
+            ))
+        else:
+            results.append(SmokeResult(
+                "frontier routing (-quality)", False,
+                f"HTTP {status}: {body[:150].decode('utf-8', 'replace')}",
+            ))
+
+    return results
+
+
+def _arg_value(args: Any, name: str) -> str | None:
+    """Normalized non-empty CLI arg value, or None."""
+    raw = getattr(args, name, None)
+    return (_normalize(raw) or None) if raw else None
+
+
+def _prompt_self_host_keys(args: Any, interactive: bool) -> dict[str, str | None]:
+    """Collect provider keys from flags, then prompt for any the tester wants
+    to add interactively."""
+    keys: dict[str, str | None] = {
+        "openrouter": _arg_value(args, "openrouter_key"),
+        "fireworks": _arg_value(args, "fireworks_key"),
+        "together": _arg_value(args, "together_key"),
+        "vllm": _arg_value(args, "vllm_endpoint"),
+        "anthropic": _arg_value(args, "byok_anthropic"),
+        "openai": _arg_value(args, "byok_openai"),
+    }
+    if not interactive:
+        return keys
+
+    any_oss = any(keys[p] for p in ("openrouter", "fireworks", "together", "vllm"))
+    if not any_oss:
+        print(
+            "\n  Cloud-OSS routing (the value prop): paste a key for any ONE "
+            "provider and the gateway routes real OSS models per request. "
+            "OpenRouter is the easiest to start with — one key, many OSS "
+            "models, pay-as-you-go: https://openrouter.ai/keys",
+        )
+        if not keys["openrouter"]:
+            keys["openrouter"] = _prompt_secret(
+                "  OpenRouter API key (sk-or-…, blank to skip): ", required=False,
+            ) or None
+        if not any(keys[p] for p in ("openrouter", "fireworks", "together", "vllm")):
+            ans = input(
+                "  Add Fireworks / Together / a local vLLM endpoint instead? [y/N]: ",
+            ).strip().lower()
+            if ans == "y":
+                keys["fireworks"] = _prompt_secret(
+                    "  Fireworks API key (blank to skip): ", required=False,
+                ) or None
+                keys["together"] = _prompt_secret(
+                    "  Together API key (blank to skip): ", required=False,
+                ) or None
+                keys["vllm"] = _prompt_secret(
+                    "  vLLM endpoint URL e.g. http://localhost:8000/v1 "
+                    "(blank to skip): ", required=False,
+                ) or None
+
+    if not keys["anthropic"] and not keys["openai"]:
+        print(
+            "\n  Optional: a frontier key (Anthropic / OpenAI) lets the "
+            "-auto and -quality policies escalate to Sonnet/Opus/GPT. "
+            "-saver stays OSS-only regardless. In self-host the key lives on "
+            "your gateway and is never sent anywhere but the provider.",
+        )
+        ans = input("  Add an Anthropic frontier key now? [y/N]: ").strip().lower()
+        if ans == "y":
+            keys["anthropic"] = _prompt_secret(
+                "  Anthropic API key (sk-ant-…): ", required=False,
+            ) or None
+    return keys
+
+
+def _setup_self_host(args: Any, base_url: str, interactive: bool) -> int:
+    """Configure + validate a gateway the tester runs themselves."""
+    print(_bold("ModelMeld — self-host setup"))
+    print(f"  Gateway (you run this): {base_url}")
+
+    # --- Step 1: collect keys ---
+    _step("Step 1/5: Collect provider keys")
+    keys = _prompt_self_host_keys(args, interactive)
+    oss_keys = {p: keys[p] for p in ("openrouter", "fireworks", "together", "vllm")}
+    has_oss = any(oss_keys.values())
+    has_frontier = bool(keys["anthropic"] or keys["openai"])
+
+    if not has_oss and not has_frontier:
+        # Refuse to silently configure a no-op stub gateway.
+        if getattr(args, "demo", False) or not interactive:
+            _warn("No provider keys supplied — nothing to route to.")
+        print()
+        print(_bold("No keys, no routing — here's the cheapest on-ramp:"))
+        print()
+        print("  OpenRouter gives you one key for many OSS models, "
+              "pay-as-you-go, no minimum:")
+        print(f"     {_bold('https://openrouter.ai/keys')}")
+        print()
+        print("  Grab a key, then re-run:")
+        print(f"     {_bold('modelmeld setup --self-host --openrouter-key sk-or-…')}")
+        print()
+        print("  (A keyless gateway can only serve the no-op stub adapter, so "
+              "this wizard won't configure one — you'd see canned replies, not "
+              "real routing.)")
+        return 2
+
+    if has_oss:
+        for prov, val in oss_keys.items():
+            if val:
+                label = "endpoint" if prov == "vllm" else "key"
+                _ok(f"{prov} {label} set")
+    else:
+        _warn(
+            "No cloud-OSS / vLLM key — only frontier routing will work. "
+            "-saver (OSS-only) will have nothing to route to. Add an "
+            "OpenRouter key to unlock the savings path.",
+        )
+    if keys["anthropic"]:
+        _ok(f"Anthropic frontier key set ({len(keys['anthropic'])} chars)")
+    if keys["openai"]:
+        _ok(f"OpenAI frontier key set ({len(keys['openai'])} chars)")
+
+    gateway_env = _self_host_gateway_env_vars(
+        openrouter_key=keys["openrouter"],
+        fireworks_key=keys["fireworks"],
+        together_key=keys["together"],
+        vllm_endpoint=keys["vllm"],
+        anthropic_key=keys["anthropic"],
+        openai_key=keys["openai"],
+    )
+
+    # --- Step 2: write the gateway env script ---
+    _step("Step 2/5: Write gateway env script")
+    setup_dir = Path.home() / ".modelmeld"
+    gateway_script = setup_dir / "modelmeld-gateway.env"
+    try:
+        _write_self_host_gateway_env(gateway_script, gateway_env, base_url)
+        _ok(f"Wrote {gateway_script} (LF-only, mode 0600)")
+    except Exception as e:
+        _err(f"Failed to write gateway env script: {e}")
+        return 1
+
+    # --- Step 3: write the Claude Code client env script ---
+    _step("Step 3/5: Write Claude Code client env script")
+    client_script = setup_dir / "setup-claude-code.sh"
+    try:
+        # No BYOK header: self-host frontier is gateway-side, and the OSS
+        # core needs no api key. The placeholder satisfies Claude Code's
+        # non-empty-key requirement; the gateway ignores it.
+        _write_claude_code_env_script(
+            client_script, base_url, _SELF_HOST_CLIENT_PLACEHOLDER_KEY,
+            None, None,
+        )
+        _ok(f"Wrote {client_script} (LF-only, mode 0600)")
+    except Exception as e:
+        _err(f"Failed to write client env script: {e}")
+        return 1
+
+    # --- Step 4: boot a transient gateway, pre-write cache, smoke-test ---
+    _step("Step 4/5: Boot a gateway and verify real routing")
+    proc: subprocess.Popen[bytes] | None = None
+    smoke_ok = True
+    try:
+        proc, probe_url = _boot_transient_gateway(gateway_env)
+        if not _wait_for_healthz(probe_url):
+            out = b""
+            if proc.poll() is not None and proc.stdout is not None:
+                out = proc.stdout.read() or b""
+            _err(
+                "Gateway didn't come up. Is the `modelmeld` package importable "
+                "and uvicorn installed? "
+                + (f"Output:\n{out[:500].decode('utf-8', 'replace')}" if out else ""),
+            )
+            return 1
+        _ok("Gateway up")
+
+        # Pre-write the Claude Code discovery cache for the LOCAL gateway.
+        cache_path = Path.home() / ".claude" / "cache" / "gateway-models.json"
+        try:
+            status, _hdrs, mbody = _http_get(f"{probe_url}/v1/models", headers={})
+            if status == 200:
+                _write_claude_code_cache(cache_path, base_url, json.loads(mbody))
+                n_models = len(json.loads(mbody).get("data", []))
+                _ok(f"Pre-wrote {cache_path} ({n_models} models)")
+            else:
+                _warn(f"Couldn't fetch /v1/models (HTTP {status}); /model picker "
+                      "may be empty until you launch the gateway.")
+        except Exception as e:
+            _warn(f"Cache pre-write skipped: {e}")
+
+        if not args.skip_smoke_test:
+            results = _smoke_test_self_host(
+                probe_url, expect_oss=has_oss, expect_frontier=has_frontier,
+            )
+            for r in results:
+                if r.ok:
+                    _ok(f"{r.label}: {r.detail}")
+                else:
+                    _err(f"{r.label}: {r.detail}")
+            # The gate is the real-OSS-routing test specifically. A missing
+            # frontier key (no -quality test) or an empty OSS lineup is not a
+            # hard failure on its own, but a stub/HTTP failure on -saver is.
+            smoke_ok = all(r.ok for r in results)
+        else:
+            _warn("Smoke test skipped (--skip-smoke-test) — real routing NOT verified.")
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            with contextlib.suppress(Exception):
+                proc.wait(timeout=5)
+            if proc.poll() is None:
+                proc.kill()
+
+    if not args.skip_smoke_test and not smoke_ok:
+        _err("Routing verification failed — see errors above. Config files were "
+             "written; fix the issue and re-run, or `modelmeld doctor`.")
+        return 1
+
+    # --- Step 5: final instructions ---
+    _step("Step 5/5: Done")
+    port = base_url.rsplit(":", 1)[-1] if base_url.count(":") >= 2 else "8080"
+    print()
+    print(_bold("Self-host setup complete. Real OSS routing verified." if not
+                args.skip_smoke_test else "Self-host setup complete."))
+    print()
+    print("  1. Start the gateway (in one shell):")
+    print(f"     {_bold(f'source {gateway_script}')}")
+    print(f"     {_bold(f'uvicorn modelmeld.api.server:app --host 0.0.0.0 --port {port}')}")
+    print("  2. Point Claude Code at it (in another shell):")
+    print(f"     {_bold(f'source {client_script}')}")
+    print(f"     {_bold('claude')}")
+    print("  3. Pick a routing tier in /model:")
+    print(f"     • {_bold('ModelMeld — Saver')}  (OSS-only, predictable cost ceiling)")
+    print(f"     • {_bold('ModelMeld — Auto')}   (escalates to frontier on reasoning markers)")
+    print(f"     • {_bold('ModelMeld — Quality')} (frontier-first"
+          + ("" if has_frontier else "; needs a frontier key — add one and re-run") + ")")
+    print()
+    print("  Diagnose anytime with `modelmeld doctor`.")
+    print()
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Main flow
 # ---------------------------------------------------------------------------
 
 
 def run_setup(args: Any) -> int:
     """Execute the `modelmeld setup` command. Returns process exit code."""
-    base_url = args.base_url.rstrip("/")
+    self_host = getattr(args, "self_host", False) or getattr(args, "demo", False)
+    # --base-url defaults to the hosted endpoint, or localhost for self-host.
+    raw_base_url = getattr(args, "base_url", None) or (
+        "http://localhost:8080" if self_host else "https://api.modelmeld.ai"
+    )
+    base_url = raw_base_url.rstrip("/")
     try:
         _validate_base_url(base_url, allow_custom_host=args.allow_custom_host)
     except ValueError as e:
         _err(str(e))
         return 2
     interactive = not args.yes
+
+    if self_host:
+        return _setup_self_host(args, base_url, interactive)
 
     if args.tool == "codex":
         return _setup_codex(args, base_url, interactive)
