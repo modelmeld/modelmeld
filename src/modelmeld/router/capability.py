@@ -219,6 +219,7 @@ class CapabilityRouter(Router):
             return self._build_decision(
                 decision, adapter, fallback_id, provider, failover_from, skipped,
                 task_score=entry.task_scores.get(decision.task_category, 0.0),
+                provider_model_id=entry.provider_model_id,
             )
 
         raise RouterError(
@@ -236,11 +237,20 @@ class CapabilityRouter(Router):
         failover_from: str | None,
         skipped: list[str],
         task_score: float | None = None,
+        provider_model_id: str | None = None,
     ) -> RoutingDecision:
+        # The provider's wire slug for the model we actually picked: explicit on
+        # the fallback path (the fallback entry's), else the chosen decision's.
+        effective_pmid = (
+            provider_model_id if provider_model_id is not None
+            else cap_decision.provider_model_id
+        )
         if model_id != cap_decision.chosen_model_id:
             # We took a fallback — update the decision to reflect what we used.
             score = task_score if task_score is not None else cap_decision.task_score
-            cap_decision = cap_decision.with_model(model_id, provider, score)
+            cap_decision = cap_decision.with_model(
+                model_id, provider, score, provider_model_id=effective_pmid or "",
+            )
 
         suffix = f";skipped={','.join(skipped)}" if skipped else ""
         rationale = f"capability;{cap_decision.rationale}{suffix}"
@@ -255,6 +265,7 @@ class CapabilityRouter(Router):
             policy_applied=RoutingPolicy.CAPABILITY,
             rationale=rationale,
             model_id_override=model_id,
+            provider_model_id=effective_pmid or None,
             capability_decision=cap_decision,
         )
 

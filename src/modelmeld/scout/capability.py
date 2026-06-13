@@ -169,8 +169,15 @@ class CapabilityDecision:
     category_decision: TaskCategoryDecision | None = None
     devtool_fingerprint: Fingerprint | None = None
     rationale: str = ""
+    # The provider's own model id (the slug the upstream expects on the wire),
+    # distinct from the canonical `chosen_model_id` used for attribution. Empty
+    # when the registry row has none (then the canonical id is sent verbatim).
+    provider_model_id: str = ""
 
-    def with_model(self, model_id: str, provider: str, task_score: float) -> CapabilityDecision:
+    def with_model(
+        self, model_id: str, provider: str, task_score: float,
+        provider_model_id: str = "",
+    ) -> CapabilityDecision:
         """Return a copy with a different chosen model (used during failover)."""
         return CapabilityDecision(
             chosen_model_id=model_id,
@@ -182,6 +189,7 @@ class CapabilityDecision:
             category_decision=self.category_decision,
             devtool_fingerprint=self.devtool_fingerprint,
             rationale=f"{self.rationale};failover={model_id}",
+            provider_model_id=provider_model_id,
         )
 
 
@@ -461,6 +469,7 @@ class CapabilityScout:
             category_decision=category_decision,
             devtool_fingerprint=fingerprint,
             rationale=rationale,
+            provider_model_id=chosen_entry.provider_model_id,
         )
 
     def _pinned_decision(
@@ -487,6 +496,7 @@ class CapabilityScout:
             category_decision=None,
             devtool_fingerprint=self.fingerprinter.identify(request),
             rationale=f"PIN: model={entry.model_id};scout_bypassed(MODELMELD_ALLOW_MODEL_PIN)",
+            provider_model_id=entry.provider_model_id,
         )
 
     def lookup_fallback(self, model_id: str) -> ModelEntry | None:

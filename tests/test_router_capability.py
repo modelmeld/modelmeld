@@ -61,12 +61,16 @@ def _req() -> ChatCompletionRequest:
     )
 
 
-def _entry(model_id: str, provider: str, cost_in: float, cost_out: float, coding: float) -> ModelEntry:
+def _entry(
+    model_id: str, provider: str, cost_in: float, cost_out: float, coding: float,
+    provider_model_id: str = "",
+) -> ModelEntry:
     return ModelEntry(
         model_id=model_id, provider=provider, context_window=100000,
         cost_per_m_input=cost_in, cost_per_m_output=cost_out,
         task_scores={"coding": coding},
         last_updated="2026-05-17", source="test",
+        provider_model_id=provider_model_id,
     )
 
 
@@ -105,6 +109,92 @@ async def test_anthropic_pick_maps_to_cloud_tier() -> None:
     )
     decision = await router.route(_req())
     assert decision.tier == Tier.CLOUD
+
+
+# ---------------------------------------------------------------------------
+# provider_model_id — the provider's own wire slug, distinct from the canonical
+# model_id used for attribution. Regression: the canonical id used to leak onto
+# the egress wire (the overlay's provider_model_id was never applied), so any
+# model whose provider slug differs from its canonical id 4xx'd at the upstream.
+# ---------------------------------------------------------------------------
+
+async def test_decision_carries_provider_model_id_for_wire() -> None:
+    registry = ModelRegistry([
+        _entry("qwen3-coder-480b", "openai", 0.5, 1.0, coding=0.85,
+               provider_model_id="qwen/qwen3-coder"),
+    ])
+    scout = CapabilityScout(registry=registry, quality_threshold=0.80)
+    router = CapabilityRouter(
+        scout=scout, adapters_by_provider={"openai": _FakeAdapter("openai")},
+    )
+    decision = await router.route(_req())
+    # Canonical id is preserved for attribution; the provider slug rides the wire.
+    assert decision.model_id_override == "qwen3-coder-480b"
+    assert decision.provider_model_id == "qwen/qwen3-coder"
+
+
+async def test_decision_provider_model_id_none_when_absent() -> None:
+    """No provider_model_id on the row → None, so egress sends the canonical id
+    verbatim (back-compat for providers that accept the bare name)."""
+    registry = ModelRegistry([_entry("gpt", "openai", 1.0, 3.0, coding=0.85)])
+    scout = CapabilityScout(registry=registry, quality_threshold=0.80)
+    router = CapabilityRouter(
+        scout=scout, adapters_by_provider={"openai": _FakeAdapter("openai")},
+    )
+    decision = await router.route(_req())
+    assert decision.model_id_override == "gpt"
+    assert decision.provider_model_id is None
+
+
+async def test_fallback_uses_fallback_entrys_provider_model_id() -> None:
+    """A fallback must carry the FALLBACK row's slug, not the primary's."""
+    registry = ModelRegistry([
+        _entry("qwen", "vllm", 0.5, 1.0, coding=0.85,
+               provider_model_id="vendor/qwen-primary"),         # primary
+        _entry("gpt-mini", "openai", 1.0, 3.0, coding=0.83,
+               provider_model_id="openai/gpt-mini-slug"),        # 1st fallback
+    ])
+    scout = CapabilityScout(registry=registry, quality_threshold=0.80)
+    router = CapabilityRouter(
+        scout=scout,
+        adapters_by_provider={
+            "vllm": _FakeAdapter("vllm", healthy=False),  # force fallback
+            "openai": _FakeAdapter("openai", healthy=True),
+        },
+    )
+    decision = await router.route(_req())
+    assert decision.model_id_override == "gpt-mini"
+    assert decision.provider_model_id == "openai/gpt-mini-slug"
+
+
+def test_apply_model_override_puts_provider_slug_on_wire() -> None:
+    from modelmeld.api.routes.chat import _apply_model_override
+    from modelmeld.router import RoutingDecision
+
+    adapter = _FakeAdapter("openai")
+    decision = RoutingDecision(
+        tier=Tier.CLOUD, adapter=adapter, scout_decision=None,
+        policy_applied=RoutingPolicy.CAPABILITY, rationale="t",
+        model_id_override="qwen3-coder-480b",
+        provider_model_id="qwen/qwen3-coder",
+    )
+    out = _apply_model_override(_req(), decision)
+    assert out.model == "qwen/qwen3-coder"  # wire = provider slug
+
+
+def test_apply_model_override_falls_back_to_canonical_without_slug() -> None:
+    from modelmeld.api.routes.chat import _apply_model_override
+    from modelmeld.router import RoutingDecision
+
+    adapter = _FakeAdapter("openai")
+    decision = RoutingDecision(
+        tier=Tier.CLOUD, adapter=adapter, scout_decision=None,
+        policy_applied=RoutingPolicy.CAPABILITY, rationale="t",
+        model_id_override="deepseek-v4-pro",
+        provider_model_id=None,
+    )
+    out = _apply_model_override(_req(), decision)
+    assert out.model == "deepseek-v4-pro"  # no slug → canonical verbatim
 
 
 # ---------------------------------------------------------------------------
