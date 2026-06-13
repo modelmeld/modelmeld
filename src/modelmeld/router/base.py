@@ -57,7 +57,12 @@ class RoutingDecision:
     `scout_decision`       — what tier-Scout said (None when bypassed).
     `policy_applied`       — the policy that produced this decision.
     `rationale`            — human-readable trace for logs / debugging.
-    `model_id_override`    — for CAPABILITY routing: swap `request.model` with this.
+    `model_id_override`    — for CAPABILITY routing: the canonical model_id, used
+                             for response attribution + registry lookup.
+    `provider_model_id`    — for CAPABILITY routing: the provider's own slug to put
+                             on the egress wire (e.g. "qwen/qwen3-coder"). Distinct
+                             from `model_id_override`; empty/None → send the
+                             canonical id verbatim (back-compat for rows with none).
     `capability_decision`  — for CAPABILITY routing: full CapabilityDecision.
     """
 
@@ -67,6 +72,7 @@ class RoutingDecision:
     policy_applied: RoutingPolicy
     rationale: str
     model_id_override: str | None = None
+    provider_model_id: str | None = None
     capability_decision: object | None = None
     # ^ typed as object to avoid an import cycle between router/base + scout/capability.
 

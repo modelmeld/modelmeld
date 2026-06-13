@@ -1059,13 +1059,18 @@ def _apply_model_override(
 ) -> ChatCompletionRequest:
     """For CAPABILITY routing: rewrite `request.model` to the scout's pick.
 
-    Other policies leave the request untouched.
+    The WIRE model is the chosen provider's own slug (`provider_model_id`, e.g.
+    "qwen/qwen3-coder") when the registry row carries one, falling back to the
+    canonical `model_id_override` otherwise. `model_id_override` itself stays
+    canonical for response attribution + registry lookups — only the egress
+    `request.model` is rewritten here. Other policies leave the request untouched.
     """
     if decision.model_id_override is None:
         return request
-    if decision.model_id_override == request.model:
+    wire_model = decision.provider_model_id or decision.model_id_override
+    if wire_model == request.model:
         return request
-    return request.model_copy(update={"model": decision.model_id_override})
+    return request.model_copy(update={"model": wire_model})
 
 
 def _canonical_model_id_for_header(
