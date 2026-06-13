@@ -248,3 +248,34 @@ def test_empty_completion_emits_one_empty_message_item() -> None:
     assert len(resp.output) == 1
     assert resp.output[0].type == "message"
     assert resp.output[0].content[0].text == ""
+
+
+# ---------------------------------------------------------------------------
+# Reasoning-effort forwarding (B-3 parity with the Messages surface). Codex
+# signals thinking via `reasoning.effort`; without forwarding it was silently
+# dropped on the Responses path, so OSS backends under-reasoned.
+# ---------------------------------------------------------------------------
+
+def test_reasoning_effort_is_forwarded() -> None:
+    req = ResponsesRequest(
+        model="m", input="fix the bug", reasoning={"effort": "high"},
+    )
+    out = from_responses_request(req)
+    assert out.reasoning_effort == "high"
+
+
+def test_reasoning_effort_minimal_maps_to_low() -> None:
+    req = ResponsesRequest(
+        model="m", input="x", reasoning={"effort": "minimal"},
+    )
+    assert from_responses_request(req).reasoning_effort == "low"
+
+
+def test_reasoning_effort_none_when_absent_or_unknown() -> None:
+    assert from_responses_request(
+        ResponsesRequest(model="m", input="x")
+    ).reasoning_effort is None
+    # An unrecognized effort value is dropped rather than passed through.
+    assert from_responses_request(
+        ResponsesRequest(model="m", input="x", reasoning={"effort": "turbo"})
+    ).reasoning_effort is None

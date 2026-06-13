@@ -18,7 +18,7 @@ Phase 1 is non-streaming. The Responses SSE event stream is a separate follow-up
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from modelmeld.api.schemas import (
@@ -142,6 +142,35 @@ def _to_chat_tools(tools: list[dict[str, Any]] | None) -> list[Tool] | None:
     return out or None
 
 
+# Responses `reasoning.effort` accepts "minimal" in addition to low/medium/high;
+# the internal reasoning_effort tops out at low/medium/high, so "minimal" maps to
+# "low" (the closest reasoning level).
+_RESPONSES_EFFORT_TO_REASONING: dict[str, Literal["low", "medium", "high"]] = {
+    "minimal": "low",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+}
+
+
+def _reasoning_effort_from_responses(
+    req: ResponsesRequest,
+) -> Literal["low", "medium", "high"] | None:
+    """Codex signals thinking via the Responses `reasoning.effort` field. Forward
+    it as the internal `reasoning_effort` so OpenAI-compatible OSS backends reason
+    instead of having it dropped — mirrors `from_anthropic_request`'s B-3 Phase 2
+    forwarding for the Messages surface (without this, the effort was silently lost
+    on the Responses path). `reasoning` is an extra field (not declared on the
+    schema), so it lives in model_extra. None when no reasoning was signalled."""
+    extra = req.model_extra or {}
+    reasoning = extra.get("reasoning")
+    if isinstance(reasoning, dict):
+        effort = reasoning.get("effort")
+        if isinstance(effort, str):
+            return _RESPONSES_EFFORT_TO_REASONING.get(effort)
+    return None
+
+
 def from_responses_request(req: ResponsesRequest) -> ChatCompletionRequest:
     messages: list[Message] = []
     if req.instructions:
@@ -162,6 +191,9 @@ def from_responses_request(req: ResponsesRequest) -> ChatCompletionRequest:
         tools=_to_chat_tools(req.tools),
         tool_choice=req.tool_choice,
         stream=req.stream,
+        # Forward Codex's reasoning intent so OSS backends reason (B-3 parity with
+        # the Messages surface); None when the client signalled no reasoning.
+        reasoning_effort=_reasoning_effort_from_responses(req),
     )
 
 
