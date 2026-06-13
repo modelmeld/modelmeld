@@ -181,6 +181,66 @@
       "cost_per_m_output": 2.0,
       "task_scores": {"tool_use": 0.85},
       "source": "modelmeld_tool_eval_v1_2026_06_10"
+    },
+    {
+      "model_id": "deepseek-v4-flash",
+      "provider": "openrouter",
+      "provider_model_id": "deepseek/deepseek-v4-flash",
+      "context_window": 1048576,
+      "cost_per_m_input": 0.1,
+      "cost_per_m_output": 0.2,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
+    },
+    {
+      "model_id": "minimax-m3",
+      "provider": "openrouter",
+      "provider_model_id": "minimax/minimax-m3",
+      "context_window": 1048576,
+      "cost_per_m_input": 0.3,
+      "cost_per_m_output": 1.2,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
+    },
+    {
+      "model_id": "minimax-m3",
+      "provider": "together",
+      "provider_model_id": "MiniMaxAI/MiniMax-M3",
+      "context_window": 524288,
+      "cost_per_m_input": 0.3,
+      "cost_per_m_output": 1.2,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
+    },
+    {
+      "model_id": "glm-5",
+      "provider": "openrouter",
+      "provider_model_id": "z-ai/glm-5",
+      "context_window": 202752,
+      "cost_per_m_input": 0.6,
+      "cost_per_m_output": 1.92,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
+    },
+    {
+      "model_id": "glm-5",
+      "provider": "together",
+      "provider_model_id": "zai-org/GLM-5",
+      "context_window": 202752,
+      "cost_per_m_input": 1.0,
+      "cost_per_m_output": 3.2,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
+    },
+    {
+      "model_id": "kimi-k2.6",
+      "provider": "openrouter",
+      "provider_model_id": "moonshotai/kimi-k2.6",
+      "context_window": 262144,
+      "cost_per_m_input": 0.68,
+      "cost_per_m_output": 3.41,
+      "task_scores": {"tool_use": 0.85},
+      "source": "modelmeld_tool_eval_v1_2026_06_13"
     }
   ]
 }

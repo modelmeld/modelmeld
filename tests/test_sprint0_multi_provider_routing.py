@@ -142,6 +142,8 @@ async def test_together_only_setup_routes_tool_request_to_together(
         "gpt-oss-120b",
         "kimi-k2.6",
         "llama-3.3-70b-instruct",
+        "minimax-m3",
+        "glm-5",
     }
 
 
