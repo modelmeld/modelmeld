@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -30,9 +31,30 @@ from modelmeld.scout import ModelRegistry, Scout, build_scout
 from modelmeld.scout.multi_provider_registry import default_multi_provider_registry
 from modelmeld.tokens import TokenCounter, build_token_counter
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Loud-fail the #1 self-host footgun: the default config
+    # (routing_policy=single + upstream_provider=stub) serves a canned
+    # stub reply to EVERY request with no error. A tester who follows a
+    # bare `uvicorn modelmeld.api.server:app` lands here and never sees
+    # real routing. Warn at startup so the silent no-op is at least loud.
+    settings = getattr(app.state, "settings", None)
+    if (
+        settings is not None
+        and getattr(settings, "routing_policy", None) == "single"
+        and getattr(settings, "upstream_provider", None) == "stub"
+    ):
+        logger.warning(
+            "ModelMeld is running with routing_policy=single + "
+            "upstream_provider=stub: ALL requests return a canned stub "
+            "reply, not real model output. Run `modelmeld setup "
+            "--self-host` (or set MODELMELD_ROUTING_POLICY=capability + a "
+            "provider key such as MODELMELD_OPENROUTER_API_KEY) to enable "
+            "real routing. See the README Self-host section.",
+        )
     try:
         yield
     finally:

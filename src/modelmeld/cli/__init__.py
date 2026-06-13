@@ -66,9 +66,51 @@ def main(argv: list[str] | None = None) -> int:
         help="Your OpenAI API key for BYOK frontier routing. Optional.",
     )
     setup_p.add_argument(
+        "--self-host",
+        action="store_true",
+        help=(
+            "Configure a gateway you run yourself (localhost) instead of the "
+            "hosted endpoint. Prompts for cloud-OSS provider keys (OpenRouter "
+            "/ Fireworks / Together), optional frontier keys, and/or a local "
+            "vLLM endpoint; enables capability routing; and smoke-tests real "
+            "OSS routing before declaring success. No ModelMeld API key needed."
+        ),
+    )
+    setup_p.add_argument(
+        "--openrouter-key",
+        help="OpenRouter API key (self-host). Enables cloud-OSS routing.",
+    )
+    setup_p.add_argument(
+        "--fireworks-key",
+        help="Fireworks API key (self-host). Enables cloud-OSS routing.",
+    )
+    setup_p.add_argument(
+        "--together-key",
+        help="Together API key (self-host). Enables cloud-OSS routing.",
+    )
+    setup_p.add_argument(
+        "--vllm-endpoint",
+        help=(
+            "Local vLLM OpenAI-compatible endpoint URL (self-host), e.g. "
+            "http://localhost:8000/v1. Enables local OSS routing, no key."
+        ),
+    )
+    setup_p.add_argument(
+        "--demo",
+        action="store_true",
+        help=(
+            "Self-host with no keys: print the cheapest real on-ramp instead "
+            "of silently configuring a no-op stub gateway. Exits non-zero."
+        ),
+    )
+    setup_p.add_argument(
         "--base-url",
-        default="https://api.modelmeld.ai",
-        help="ModelMeld gateway URL (default: hosted endpoint)",
+        default=None,
+        help=(
+            "ModelMeld gateway URL. Defaults to the hosted endpoint "
+            "(https://api.modelmeld.ai), or http://localhost:8080 with "
+            "--self-host."
+        ),
     )
     setup_p.add_argument(
         "--allow-custom-host",
