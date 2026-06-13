@@ -10,8 +10,10 @@ exported from the adapters package.
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
+import modelmeld.adapters.together_adapter as together_mod
 from modelmeld.adapters import (
     FireworksAdapter,
     OpenRouterAdapter,
@@ -53,6 +55,41 @@ def test_together_missing_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_together_no_served_model_pin() -> None:
     adapter = TogetherAdapter(api_key="t_test")
     assert adapter.served_model is None
+
+
+def _mock_async_client(handler):
+    """Factory replacing together_adapter.httpx.AsyncClient with a mock-transport
+    client so health()'s raw GET can be intercepted. Captures the real
+    AsyncClient before the monkeypatch so the factory doesn't recurse into the
+    patched name."""
+    real = httpx.AsyncClient
+    def _factory(*_args, **_kwargs):
+        return real(transport=httpx.MockTransport(handler))
+    return _factory
+
+
+async def test_together_health_true_on_bare_list_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: Together's /models returns a BARE list, not {data:[...]}.
+    The inherited SDK models.list() raises on that shape, so health() must use a
+    raw GET and treat any 2xx as healthy — otherwise ALL Together routing 503s."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/models")
+        return httpx.Response(200, json=[{"id": "a"}, {"id": "b"}])  # bare list
+    monkeypatch.setattr(together_mod.httpx, "AsyncClient", _mock_async_client(handler))
+    adapter = TogetherAdapter(api_key="t_test")
+    assert await adapter.health() is True
+
+
+async def test_together_health_false_on_error_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="unavailable")
+    monkeypatch.setattr(together_mod.httpx, "AsyncClient", _mock_async_client(handler))
+    adapter = TogetherAdapter(api_key="t_test")
+    assert await adapter.health() is False
 
 
 # ---------------------------------------------------------------------------
