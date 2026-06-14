@@ -12,6 +12,24 @@
   ],
   "models": [
     {
+      "model_id": "claude-opus-4-8",
+      "provider": "anthropic",
+      "context_window": 1000000,
+      "cost_per_m_input": 5.0,
+      "cost_per_m_output": 25.0,
+      "task_scores": {
+        "coding": 0.82,
+        "reasoning": 0.91,
+        "simple_qa": 0.95,
+        "summarization": 0.92,
+        "tool_use": 0.91
+      },
+      "last_updated": "2026-06-14T00:00:00Z",
+      "source": "manual_curation_2026_06_14",
+      "reasoning_interface": "anthropic_adaptive",
+      "max_output_tokens": 128000
+    },
+    {
       "model_id": "claude-opus-4-7",
       "provider": "anthropic",
       "context_window": 200000,
