@@ -542,11 +542,11 @@ def from_anthropic_request(req: AnthropicMessagesRequest) -> ChatCompletionReque
     #    one leading SystemMessage; the non-system body keeps its original
     #    order. One Anthropic message may still yield multiple OpenAI messages
     #    (mixed tool_result + text in a single user turn).
-    system_parts: list[str] = []
+    system_parts: list[TextPart] = []
     if req.system is not None:
-        top_system = _anthropic_system_to_text(req.system)
-        if top_system:
-            system_parts.append(top_system)
+        for part in _anthropic_system_to_parts(req.system):
+            if part.text or part.cache_control:
+                system_parts.append(part)
 
     body_messages: list[Message] = []
     for msg in req.messages:
@@ -554,15 +554,22 @@ def from_anthropic_request(req: AnthropicMessagesRequest) -> ChatCompletionReque
             if isinstance(converted, SystemMessage):
                 system_text = _extract_text(converted.content)
                 if system_text:
-                    system_parts.append(system_text)
+                    system_parts.append(TextPart(type="text", text=system_text))
             else:
                 body_messages.append(converted)
 
     messages: list[Message] = []
     if system_parts:
-        messages.append(
-            SystemMessage(role="system", content="\n\n".join(system_parts))
-        )
+        # Emit the LIST form (preserving cache_control breakpoints) when any
+        # fragment carries one; else collapse to a single joined string — the
+        # D-2 strict-backend-safe back-compat shape unchanged for cache-less
+        # requests.
+        sys_content: str | list[TextPart]
+        if any(p.cache_control for p in system_parts):
+            sys_content = system_parts
+        else:
+            sys_content = "\n\n".join(p.text for p in system_parts)
+        messages.append(SystemMessage(role="system", content=sys_content))
     messages.extend(body_messages)
 
     # 3. Tools
@@ -603,11 +610,24 @@ def from_anthropic_request(req: AnthropicMessagesRequest) -> ChatCompletionReque
     )
 
 
-def _anthropic_system_to_text(system: str | list[AnthropicTextBlock]) -> str:
-    """D-2: list-form joins text blocks with '\\n\\n'. cache_control ignored."""
+def _anthropic_system_to_parts(system: str | list[AnthropicTextBlock]) -> list[TextPart]:
+    """System fragments as TextParts, PRESERVING each block's cache_control.
+
+    The big stable system prefix is a client's primary cache breakpoint, so
+    dropping cache_control here previously denied OpenAI-compatible backends
+    their prompt caching.
+    Callers collapse to a single joined string when NO fragment carries
+    cache_control (D-2, strict-OpenAI-backend-safe), else emit the list form
+    so the breakpoint survives to the provider."""
     if isinstance(system, str):
-        return system
-    return "\n\n".join(block.text for block in system)
+        return [TextPart(type="text", text=system)]
+    return [
+        TextPart(
+            type="text", text=block.text,
+            cache_control=block.cache_control.model_dump() if block.cache_control else None,
+        )
+        for block in system
+    ]
 
 
 def _anthropic_message_to_openai(msg: AnthropicMessage) -> list[Message]:
@@ -655,7 +675,10 @@ def _anthropic_user_to_openai(msg: AnthropicMessage) -> list[Message]:
 
     for block in msg.content:
         if isinstance(block, AnthropicTextBlock):
-            user_parts.append(TextPart(type="text", text=block.text))
+            user_parts.append(TextPart(
+                type="text", text=block.text,
+                cache_control=block.cache_control.model_dump() if block.cache_control else None,
+            ))
         elif isinstance(block, AnthropicImageBlock):
             raise TranslationError(
                 "Anthropic image content blocks are not supported in v1 "
@@ -684,7 +707,11 @@ def _anthropic_user_to_openai(msg: AnthropicMessage) -> list[Message]:
     # accumulated user text/image content as one trailing UserMessage.
     out: list[Message] = list(tool_messages)
     if user_parts:
-        if len(user_parts) == 1 and isinstance(user_parts[0], TextPart):
+        # Collapse a lone text part to a bare string ONLY when it carries no
+        # cache_control — otherwise keep the list form so the breakpoint
+        # survives to the provider.
+        if (len(user_parts) == 1 and isinstance(user_parts[0], TextPart)
+                and not user_parts[0].cache_control):
             out.append(UserMessage(role="user", content=user_parts[0].text))
         else:
             out.append(UserMessage(role="user", content=list(user_parts)))

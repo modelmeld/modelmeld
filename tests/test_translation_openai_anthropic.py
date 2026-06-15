@@ -7,9 +7,11 @@ import json
 import pytest
 
 from modelmeld.api.schemas import ChatCompletionRequest
+from modelmeld.api.schemas_anthropic import AnthropicMessagesRequest
 from modelmeld.translation.openai_anthropic import (
     AnthropicStreamTranslator,
     TranslationError,
+    from_anthropic_request,
     from_anthropic_response,
     to_anthropic_params,
 )
@@ -56,6 +58,64 @@ def test_multiple_system_messages_concatenated() -> None:
     )
     params = to_anthropic_params(req)
     assert params["system"] == "Rule 1.\n\nRule 2."
+
+
+# ---------------------------------------------------------------------------
+# Request translation: Anthropic → OpenAI — cache_control forwarding.
+# Anthropic content-block cache_control breakpoints must survive translation
+# onto the OpenAI content parts so providers that support ephemeral prompt
+# caching receive them (they were previously dropped). Cache-less requests keep
+# the prior collapsed-string shape (strict-backend back-compat).
+# ---------------------------------------------------------------------------
+
+def test_system_cache_control_preserved_as_list() -> None:
+    req = AnthropicMessagesRequest.model_validate({
+        "model": "m", "max_tokens": 16,
+        "system": [
+            {"type": "text", "text": "BIG STABLE PREFIX",
+             "cache_control": {"type": "ephemeral"}},
+        ],
+        "messages": [{"role": "user", "content": "hi"}],
+    })
+    out = from_anthropic_request(req)
+    sysmsg = next(m for m in out.messages if m.role == "system")
+    assert isinstance(sysmsg.content, list)  # list form, NOT collapsed to string
+    assert sysmsg.content[0].text == "BIG STABLE PREFIX"
+    assert sysmsg.content[0].cache_control == {"type": "ephemeral"}
+    # And it must survive serialization to the wire (the egress path).
+    dumped = out.model_dump(exclude_none=True)
+    sys_dumped = next(m for m in dumped["messages"] if m["role"] == "system")
+    assert sys_dumped["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_user_cache_control_preserved() -> None:
+    req = AnthropicMessagesRequest.model_validate({
+        "model": "m", "max_tokens": 16,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "cached doc",
+             "cache_control": {"type": "ephemeral"}},
+        ]}],
+    })
+    out = from_anthropic_request(req)
+    usermsg = next(m for m in out.messages if m.role == "user")
+    assert isinstance(usermsg.content, list)  # not collapsed to a bare string
+    assert usermsg.content[0].cache_control == {"type": "ephemeral"}
+
+
+def test_system_without_cache_control_collapses_to_string() -> None:
+    """Back-compat: with no cache_control anywhere, the system stays a single
+    joined string (D-2 strict-backend shape, unchanged)."""
+    req = AnthropicMessagesRequest.model_validate({
+        "model": "m", "max_tokens": 16,
+        "system": [
+            {"type": "text", "text": "A"},
+            {"type": "text", "text": "B"},
+        ],
+        "messages": [{"role": "user", "content": "hi"}],
+    })
+    out = from_anthropic_request(req)
+    sysmsg = next(m for m in out.messages if m.role == "system")
+    assert sysmsg.content == "A\n\nB"
 
 
 def test_max_completion_tokens_takes_precedence_over_max_tokens() -> None:
