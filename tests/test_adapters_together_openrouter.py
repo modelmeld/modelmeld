@@ -10,6 +10,8 @@ exported from the adapters package.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import httpx
 import pytest
 
@@ -20,6 +22,7 @@ from modelmeld.adapters import (
     TogetherAdapter,
 )
 from modelmeld.adapters.base import AdapterError
+from modelmeld.api.schemas import ChatCompletionRequest
 
 # ---------------------------------------------------------------------------
 # TogetherAdapter
@@ -139,3 +142,58 @@ def test_three_upstream_providers_have_distinct_names() -> None:
     or_ = OpenRouterAdapter(api_key="or")
     assert {fw.name, tg.name, or_.name} == {"fireworks", "together", "openrouter"}
     assert fw.is_egress and tg.is_egress and or_.is_egress
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter provider-routing (cache-stickiness): a deterministic `provider`
+# preference pins a session to one backend so the per-backend prompt cache
+# accumulates across turns (default load-balancing scatters it across backends).
+# ---------------------------------------------------------------------------
+
+def test_openrouter_default_provider_routing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MODELMELD_OPENROUTER_PROVIDER_SORT", raising=False)
+    adapter = OpenRouterAdapter(api_key="or_test")
+    assert adapter._extra_body == {"provider": {"sort": "price", "allow_fallbacks": True}}
+
+
+def test_openrouter_provider_sort_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MODELMELD_OPENROUTER_PROVIDER_SORT", "throughput")
+    adapter = OpenRouterAdapter(api_key="or_test")
+    assert adapter._extra_body == {"provider": {"sort": "throughput", "allow_fallbacks": True}}
+
+
+def test_openrouter_provider_routing_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MODELMELD_OPENROUTER_PROVIDER_SORT", "")
+    adapter = OpenRouterAdapter(api_key="or_test")
+    assert adapter._extra_body is None
+
+
+def test_together_has_no_provider_routing() -> None:
+    # Provider routing is OpenRouter-specific; sibling OpenAI-compat adapters unset.
+    assert TogetherAdapter(api_key="tg")._extra_body is None
+
+
+async def test_openrouter_sends_provider_extra_body_on_chat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The provider preference must actually reach the wire (extra_body on the
+    create call), not just sit on the adapter."""
+    monkeypatch.delenv("MODELMELD_OPENROUTER_PROVIDER_SORT", raising=False)
+    adapter = OpenRouterAdapter(api_key="or_test")
+    fake = MagicMock()
+    fake.model_dump.return_value = {
+        "id": "x", "object": "chat.completion", "created": 0, "model": "m",
+        "choices": [{"index": 0,
+                     "message": {"role": "assistant", "content": "ok"},
+                     "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+    mock_create = AsyncMock(return_value=fake)
+    adapter._client.chat.completions.create = mock_create  # type: ignore[method-assign]
+    await adapter.chat(ChatCompletionRequest(
+        model="deepseek-v4-flash",
+        messages=[{"role": "user", "content": "hi"}],
+    ))
+    assert mock_create.call_args.kwargs.get("extra_body") == {
+        "provider": {"sort": "price", "allow_fallbacks": True},
+    }
