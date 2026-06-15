@@ -29,6 +29,7 @@ from modelmeld.privacy import Scrubber, build_scrubber
 from modelmeld.router import Router, SingleAdapterRouter, build_router
 from modelmeld.scout import ModelRegistry, Scout, build_scout
 from modelmeld.scout.multi_provider_registry import default_multi_provider_registry
+from modelmeld.scout.session_state import SessionStallStore
 from modelmeld.tokens import TokenCounter, build_token_counter
 
 logger = logging.getLogger(__name__)
@@ -153,6 +154,11 @@ def build_app(
     app.state.completion_cache = completion_cache
     # Semantic cache. Consulted AFTER the exact-match cache.
     app.state.semantic_cache = semantic_cache
+
+    # Per-session stall state for reactive escalation. Constructed
+    # unconditionally (cheap, in-process TTL map); the SHADOW behaviour that
+    # reads it is gated by MODELMELD_STALL_SHADOW so tests can always reach it.
+    app.state.session_stall = SessionStallStore()
 
     if router is not None:
         app.state.router = router
