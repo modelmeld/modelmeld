@@ -213,12 +213,32 @@ def should_escalate_to_frontier(request) -> tuple[bool, int]:
     return (count >= _REASONING_MARKER_ESCALATION_COUNT, count)
 
 
+# Open-weight models collapse to near-0% on long-context code REPAIR past
+# ~64k tokens; -auto routes such requests UP to frontier. A high-precision,
+# near-deterministic predictive prior — distinct from the broad difficulty
+# heuristics that do NOT predict the frontier gap. Tunable via
+# MODELMELD_LARGE_CONTEXT_ESCALATE_TOKENS; 0 disables.
+_LARGE_CONTEXT_ESCALATE_TOKENS = 64_000
+
+
+def large_context_threshold() -> int:
+    """Input-token count above which -auto escalates to frontier (0 disables)."""
+    raw = os.environ.get("MODELMELD_LARGE_CONTEXT_ESCALATE_TOKENS", "").strip()
+    if raw:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            pass
+    return _LARGE_CONTEXT_ESCALATE_TOKENS
+
+
 __all__ = [
     "POLICY_QUALITY_THRESHOLD",
     "ModelMeldPolicy",
     "detect_reasoning_markers",
     "extract_user_text",
     "frontier_providers",
+    "large_context_threshold",
     "oss_providers",
     "reasoning_markers",
     "resolve_policy",
