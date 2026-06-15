@@ -19,6 +19,10 @@ from dataclasses import dataclass, field
 
 from modelmeld.api.schemas import ChatCompletionRequest
 from modelmeld.scout.devtool import Fingerprint, Fingerprinter
+from modelmeld.scout.difficulty import (
+    DifficultyClassifier,
+    difficulty_routing_enabled,
+)
 from modelmeld.scout.policy import (
     ModelMeldPolicy,
     frontier_providers,
@@ -220,6 +224,9 @@ class CapabilityScout:
             raise ValueError(f"fallback_depth must be ≥0, got {fallback_depth}")
         self.registry = registry
         self.classifier = classifier or TaskCategoryClassifier()
+        # Structural escalate-detector for AUTO (used when
+        # MODELMELD_DIFFICULTY_ROUTING is on; else the marker path runs).
+        self.difficulty_classifier = DifficultyClassifier()
         self.quality_threshold = quality_threshold
         self.eligible_providers = eligible_providers
         self.fingerprinter = fingerprinter or Fingerprinter()
@@ -318,7 +325,18 @@ class CapabilityScout:
                 # Further restrict to providers the customer actually
                 # supplied BYOK keys for — otherwise scout might pick
                 # gpt-5-mini when the customer only has an Anthropic key.
-                escalate, marker_count = should_escalate_to_frontier(request)
+                # Escalation signal: the structural difficulty detector when
+                # MODELMELD_DIFFICULTY_ROUTING is on (the gap concentrates on
+                # structural shapes, not reasoning-keyword phrasing), else the
+                # legacy reasoning-marker count. `category` is already resolved
+                # above; the detector is category-gated on it.
+                if difficulty_routing_enabled():
+                    diff = self.difficulty_classifier.classify(request, category)
+                    escalate = diff.escalate
+                    esc_detail = diff.rationale
+                else:
+                    escalate, marker_count = should_escalate_to_frontier(request)
+                    esc_detail = f"markers={marker_count}"
                 if escalate:
                     fr = frontier_providers()
                     if available_frontier_providers is not None:
@@ -333,15 +351,15 @@ class CapabilityScout:
                         policy_rationale = (
                             f"policy=auto(escalation_requested;"
                             f"no_frontier_adapter;fallback=oss_reasoner;"
-                            f"markers={marker_count})"
+                            f"{esc_detail})"
                         )
                     else:
                         eligible = fr
                         policy_rationale = (
-                            f"policy=auto(escalated=frontier;markers={marker_count})"
+                            f"policy=auto(escalated=frontier;{esc_detail})"
                         )
                 else:
-                    policy_rationale = f"policy=auto(escalated=no;markers={marker_count})"
+                    policy_rationale = f"policy=auto(escalated=no;{esc_detail})"
             elif policy is ModelMeldPolicy.QUALITY:
                 # Frontier by default UNLESS the request is detected as
                 # autocomplete-shape (handled by the bias logic below).
