@@ -198,6 +198,54 @@ def test_apply_model_override_falls_back_to_canonical_without_slug() -> None:
 
 
 # ---------------------------------------------------------------------------
+# MULTI-PROVIDER wire-slug invariant — the one the gates were BLIND to.
+# When a model_id is served by several providers, the egress wire must carry
+# the slug of the provider the SCOUT CHOSE (cheapest eligible), NOT whatever
+# registry.get(model_id) returns (the last-inserted/default row). Re-deriving
+# the slug inside the router via registry.get()/lookup_fallback() passes every
+# single-provider fixture above but sends the WRONG provider's slug here. The
+# decision must thread the *chosen entry's* slug through from the scout.
+# ---------------------------------------------------------------------------
+
+async def test_multi_provider_wire_slug_is_scout_chosen_providers_slug() -> None:
+    from modelmeld.api.routes.chat import _apply_model_override
+    from modelmeld.scout.multi_provider_registry import MultiProviderModelRegistry
+
+    # Same model_id, two providers, DISTINCT slugs. The PRICEY row is inserted
+    # last, so base get(model_id) (last-write-wins) returns it — while pick()
+    # (cheapest) returns the CHEAP row. That divergence is what makes the latent
+    # bug observable; a single-provider registry can never expose it.
+    registry = MultiProviderModelRegistry([
+        _entry("glm-5", "cheap-prov", 0.10, 0.20, coding=0.85,
+               provider_model_id="cheap-prov/glm-5"),
+        _entry("glm-5", "pricey-prov", 5.0, 9.0, coding=0.85,
+               provider_model_id="pricey-prov/glm-5"),
+    ])
+    # Precondition: the two accessors genuinely disagree (else the test is moot).
+    default = registry.get("glm-5")
+    assert default is not None and default.provider_model_id == "pricey-prov/glm-5"
+
+    scout = CapabilityScout(registry=registry, quality_threshold=0.80)
+    router = CapabilityRouter(
+        scout=scout,
+        adapters_by_provider={
+            "cheap-prov": _FakeAdapter("cheap-prov"),
+            "pricey-prov": _FakeAdapter("pricey-prov"),
+        },
+    )
+    decision = await router.route(_req())
+
+    # Scout picks the cheapest provider; the canonical id is preserved for
+    # attribution; the WIRE slug must be the chosen (cheap) provider's, never
+    # the get()-default (pricey) one.
+    assert decision.adapter.name == "cheap-prov"
+    assert decision.model_id_override == "glm-5"
+    assert decision.provider_model_id == "cheap-prov/glm-5"
+    out = _apply_model_override(_req(), decision)
+    assert out.model == "cheap-prov/glm-5"
+
+
+# ---------------------------------------------------------------------------
 # Adapter selection
 # ---------------------------------------------------------------------------
 
