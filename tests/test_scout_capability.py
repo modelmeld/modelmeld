@@ -609,6 +609,38 @@ async def test_auto_alias_escalates_to_frontier_on_two_reasoning_markers() -> No
     assert "escalated=frontier" in decision.rationale
 
 
+async def test_auto_structural_flag_escalates_on_multifile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With MODELMELD_DIFFICULTY_ROUTING on, AUTO escalates on a multi-file
+    coding ask (structural signal) rather than reasoning markers."""
+    monkeypatch.setenv("MODELMELD_DIFFICULTY_ROUTING", "1")
+    scout = CapabilityScout(registry=_mixed_tier_registry())
+    decision = await scout.choose(_policy_req(
+        "anthropic/modelmeld-auto",
+        "Fix the token refresh bug across auth.py, session.py and middleware.py.",
+    ))
+    assert decision.chosen_provider == "anthropic"
+    assert "escalated=frontier" in decision.rationale
+    assert "multi_file" in decision.rationale
+
+
+async def test_auto_structural_flag_ignores_reasoning_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fix: with the structural detector on, a prompt that WOULD escalate
+    under the marker heuristic (2+ markers) does NOT escalate absent a
+    structural signal — markers no longer drive coding escalation."""
+    monkeypatch.setenv("MODELMELD_DIFFICULTY_ROUTING", "1")
+    scout = CapabilityScout(registry=_mixed_tier_registry())
+    decision = await scout.choose(_policy_req(
+        "anthropic/modelmeld-auto",
+        "Please think step by step and explain your reasoning carefully.",
+    ))
+    assert decision.chosen_provider != "anthropic"  # stayed OSS, not frontier
+    assert "escalated=no" in decision.rationale
+
+
 async def test_auto_alias_single_marker_does_not_escalate() -> None:
     """Single marker is not enough — must be 2+ distinct."""
     scout = CapabilityScout(registry=_mixed_tier_registry())
