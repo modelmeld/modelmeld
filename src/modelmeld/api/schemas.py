@@ -48,6 +48,12 @@ def _now_iso() -> str:
 class TextPart(BaseModel):
     type: Literal["text"]
     text: str
+    # Prompt-cache breakpoint (`{"type": "ephemeral"}`). Carried through from
+    # Anthropic content-block `cache_control` so OpenAI-compatible providers
+    # that support ephemeral prompt caching receive the marker and cache the
+    # prefix. `exclude_none` drops it on parts that don't carry one, so
+    # non-cache parts stay byte-clean on the wire.
+    cache_control: dict[str, Any] | None = None
 
 
 class ImageUrl(BaseModel):

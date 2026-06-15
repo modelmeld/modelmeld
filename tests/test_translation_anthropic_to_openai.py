@@ -187,7 +187,11 @@ def test_no_system_field_does_not_inject() -> None:
     assert isinstance(out.messages[0], UserMessage)
 
 
-def test_system_cache_control_is_ignored_but_accepted() -> None:
+def test_system_cache_control_is_preserved() -> None:
+    """cache_control on a system block now SURVIVES translation (previously
+    dropped), so OpenAI-compatible providers that honor ephemeral breakpoints
+    can cache the prefix. The presence of a breakpoint switches the system
+    content to the list form instead of the collapsed string."""
     req = AnthropicMessagesRequest(
         model="m", max_tokens=10,
         system=[
@@ -199,7 +203,9 @@ def test_system_cache_control_is_ignored_but_accepted() -> None:
     out = from_anthropic_request(req)
     sys_msg = out.messages[0]
     assert isinstance(sys_msg, SystemMessage)
-    assert sys_msg.content == "Be terse."
+    assert isinstance(sys_msg.content, list)
+    assert sys_msg.content[0].text == "Be terse."
+    assert sys_msg.content[0].cache_control == {"type": "ephemeral"}
 
 
 # ---------------------------------------------------------------------------
