@@ -26,6 +26,7 @@ from modelmeld.scout.difficulty import (
 from modelmeld.scout.policy import (
     ModelMeldPolicy,
     frontier_providers,
+    large_context_threshold,
     oss_providers,
     resolve_policy,
     should_escalate_to_frontier,
@@ -337,6 +338,17 @@ class CapabilityScout:
                 else:
                     escalate, marker_count = should_escalate_to_frontier(request)
                     esc_detail = f"markers={marker_count}"
+                # Large-context prior (always on for AUTO; -saver keeps its OSS
+                # ceiling). Open-weight models collapse on long-context repair
+                # past the threshold, so route up regardless of the signal above
+                # — a high-precision, near-deterministic prior, unlike the broad
+                # difficulty heuristics.
+                lc_threshold = large_context_threshold()
+                if lc_threshold > 0:
+                    ctx_tokens = self._estimated_input_tokens(request)
+                    if ctx_tokens >= lc_threshold:
+                        escalate = True
+                        esc_detail = f"{esc_detail};large_context({ctx_tokens}tok)"
                 if escalate:
                     fr = frontier_providers()
                     if available_frontier_providers is not None:
