@@ -65,10 +65,60 @@ from modelmeld.memory import (
 from modelmeld.metrics import MetricsCollector
 from modelmeld.privacy import Redaction, Scrubber
 from modelmeld.router import Router, RouterError, RoutingDecision
+from modelmeld.scout.policy import ModelMeldPolicy, resolve_policy
 from modelmeld.scout.registry import ModelRegistry
+from modelmeld.scout.session_key import derive_session_key
+from modelmeld.scout.session_state import SessionStallStore
+from modelmeld.scout.stall import (
+    default_stall_weights,
+    detect_stall,
+    observations_from_internal,
+    stall_shadow_enabled,
+)
 from modelmeld.tokens import TokenCounter
 
 logger = logging.getLogger(__name__)
+
+
+def _maybe_stall_shadow_chat(
+    fastapi_request: Request,
+    request: ChatCompletionRequest,
+    tenant_id: str,
+) -> str | None:
+    """Observe-only stall detection for `-auto` on `/v1/chat/completions`.
+
+    A reduced form of the `/v1/messages` shadow hook: this surface has no native
+    Anthropic body, so the consecutive-error signal (which needs `is_error`, lost
+    in translation) is unavailable — loop / patch-before-explore / turn-floor
+    only. Changes NOTHING about routing; returns the `x-modelmeld-stall-shadow`
+    header value or None.
+    """
+    if not stall_shadow_enabled():
+        return None
+    if resolve_policy(request.model) is not ModelMeldPolicy.AUTO:
+        return None
+    store: SessionStallStore | None = getattr(
+        fastapi_request.app.state, "session_stall", None,
+    )
+    if store is None:
+        return None
+
+    key = derive_session_key(fastapi_request.headers, request, tenant_id)
+    state = store.get_or_create(key)
+    state.turns_seen += 1
+
+    decision = detect_stall(observations_from_internal(request), default_stall_weights())
+    if not decision.stalled:
+        return None
+
+    state.last_signals = decision.signals
+    if state.shadow_fired_turn is None:
+        state.shadow_fired_turn = state.turns_seen
+        logger.info(
+            "stall-shadow would_escalate session=%s turn=%d signals=%s",
+            key, state.turns_seen, list(decision.signals),
+        )
+    return f"turn={state.turns_seen};{'|'.join(decision.signals)}"
 
 router = APIRouter()
 
@@ -208,6 +258,14 @@ async def chat_completions(
         hints = extract_hints_from_headers(fastapi_request.headers)
     except RoutingHintError as e:
         raise HTTPException(status_code=400, detail=f"invalid_routing_hint: {e}") from e
+
+    # Reactive-escalation SHADOW (observe-only; see _maybe_stall_shadow_chat).
+    # Computed on the pre-injection request. The header is set on `response` for
+    # the non-streaming path; the streaming path uses its own headers dict (see
+    # the line ~295 note), so streaming chat relies on the log line only.
+    stall_shadow = _maybe_stall_shadow_chat(fastapi_request, request, mem_identity.tenant_id)
+    if stall_shadow is not None:
+        response.headers["x-modelmeld-stall-shadow"] = stall_shadow
 
     # BYOK header extraction. Customer can pass frontier-API keys via
     # `x-modelmeld-byok-{provider}` headers. Keys transit this request

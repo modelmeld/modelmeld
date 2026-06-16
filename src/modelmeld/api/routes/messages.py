@@ -91,7 +91,16 @@ from modelmeld.memory import (
 )
 from modelmeld.privacy import Scrubber
 from modelmeld.router import Router, RouterError
+from modelmeld.scout.policy import ModelMeldPolicy, resolve_policy
 from modelmeld.scout.registry import ModelEntry
+from modelmeld.scout.session_key import derive_session_key
+from modelmeld.scout.session_state import SessionStallStore
+from modelmeld.scout.stall import (
+    default_stall_weights,
+    detect_stall,
+    observations_from_anthropic,
+    stall_shadow_enabled,
+)
 from modelmeld.tokens import TokenCounter
 from modelmeld.translation import (
     OpenAIToAnthropicStreamTranslator,
@@ -316,6 +325,47 @@ def _anthropic_json_response(
     return JSONResponse(content=body, headers=dict(base_response.headers))
 
 
+def _maybe_stall_shadow(
+    fastapi_request: Request,
+    body: AnthropicMessagesRequest,
+    internal_request: ChatCompletionRequest,
+    tenant_id: str,
+) -> str | None:
+    """Observe-only stall detection for `-auto` (MODELMELD_STALL_SHADOW gated).
+
+    Updates per-session stall state, logs the first "would escalate" signal of a
+    session, and returns the value for the `x-modelmeld-stall-shadow` response
+    header (or None when not stalled / not applicable). Changes NOTHING about
+    routing — this is the shadow increment that generates stall-truth labels.
+    """
+    if not stall_shadow_enabled():
+        return None
+    if resolve_policy(body.model) is not ModelMeldPolicy.AUTO:
+        return None
+    store: SessionStallStore | None = getattr(
+        fastapi_request.app.state, "session_stall", None,
+    )
+    if store is None:
+        return None
+
+    key = derive_session_key(fastapi_request.headers, internal_request, tenant_id)
+    state = store.get_or_create(key)
+    state.turns_seen += 1
+
+    decision = detect_stall(observations_from_anthropic(body), default_stall_weights())
+    if not decision.stalled:
+        return None
+
+    state.last_signals = decision.signals
+    if state.shadow_fired_turn is None:
+        state.shadow_fired_turn = state.turns_seen
+        logger.info(
+            "stall-shadow would_escalate session=%s turn=%d signals=%s",
+            key, state.turns_seen, list(decision.signals),
+        )
+    return f"turn={state.turns_seen};{'|'.join(decision.signals)}"
+
+
 @router.post("/messages", response_model=None)
 async def anthropic_messages(
     body: AnthropicMessagesRequest,
@@ -404,6 +454,16 @@ async def anthropic_messages(
         raise HTTPException(
             status_code=400, detail=f"invalid_routing_hint: {e}",
         ) from e
+
+    # Reactive-escalation SHADOW: observe the trajectory, emit telemetry, do not
+    # change routing. Computed before routing on the pre-injection history so the
+    # session key is stable. Propagated as a response header on both the
+    # streaming and non-streaming paths.
+    stall_shadow = _maybe_stall_shadow(
+        fastapi_request, body, internal_request, mem_identity.tenant_id,
+    )
+    if stall_shadow is not None:
+        response.headers["x-modelmeld-stall-shadow"] = stall_shadow
 
     # BYOK header extraction (mirrors chat.py — see modelmeld/api/byok.py).
     byok_creds = extract_byok_credentials(fastapi_request.headers.items())
@@ -509,6 +569,7 @@ async def anthropic_messages(
             native_request=body,
             model_registry=getattr(fastapi_request.app.state, "model_registry", None),
             extra_anthropic_headers=extra_anthropic_headers,
+            stall_shadow=stall_shadow,
         )
 
     # Cache lookup (exact-match + semantic). Cache is keyed by internal request
@@ -793,6 +854,7 @@ async def _stream_messages_with_failover(
     native_request: object | None = None,
     extra_anthropic_headers: dict[str, str] | None = None,
     model_registry: object | None = None,
+    stall_shadow: str | None = None,
 ) -> StreamingResponse:
     """Mirror of chat.py `_stream_with_failover` but emits Anthropic SSE.
 
@@ -872,6 +934,8 @@ async def _stream_messages_with_failover(
     )
     if cache_status is not None:
         headers["x-modelmeld-cache"] = cache_status
+    if stall_shadow is not None:
+        headers["x-modelmeld-stall-shadow"] = stall_shadow
 
     return StreamingResponse(
         _sse_anthropic_stream(

@@ -1031,3 +1031,91 @@ def test_native_body_preserves_thinking_when_no_substitution() -> None:
     assert (out.model_extra or {}).get("thinking") == thinking
     # served None → unchanged too.
     assert _native_body_for_upstream(body, None) is body
+
+
+# ---------------------------------------------------------------------------
+# Reactive-escalation SHADOW (observe-only) — x-modelmeld-stall-shadow header
+# ---------------------------------------------------------------------------
+
+_STALL_MESSAGES = [
+    {"role": "user", "content": "fix the failing test"},
+    {
+        "role": "assistant",
+        "content": [{"type": "tool_use", "id": "e1", "name": "Edit", "input": {}}],
+    },
+    {
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "e1", "content": "boom", "is_error": True}
+        ],
+    },
+    {
+        "role": "assistant",
+        "content": [{"type": "tool_use", "id": "e2", "name": "Edit", "input": {}}],
+    },
+    {
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "e2", "content": "boom", "is_error": True}
+        ],
+    },
+]
+
+
+async def test_stall_shadow_emits_header_without_changing_routing(
+    monkeypatch,
+) -> None:
+    """With the flag on and an -auto request whose history looks stalled, the
+    gateway emits x-modelmeld-stall-shadow AND still serves the OSS adapter
+    (observe-only: routing is unchanged)."""
+    monkeypatch.setenv("MODELMELD_STALL_SHADOW", "on")
+    app = build_app(adapter=_EchoAdapter())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post("/v1/messages", json={
+            "model": "anthropic/modelmeld-auto",
+            "max_tokens": 256,
+            "messages": _STALL_MESSAGES,
+        })
+
+    assert resp.status_code == 200
+    shadow = resp.headers.get("x-modelmeld-stall-shadow")
+    assert shadow is not None
+    assert shadow.startswith("turn=")
+    assert "patch_before_explore" in shadow
+    # Observe-only: the routed model is still the non-frontier echo adapter.
+    assert resp.headers.get("x-modelmeld-routed-model") != "claude-opus-4-8"
+
+
+async def test_stall_shadow_silent_when_flag_off(monkeypatch) -> None:
+    monkeypatch.delenv("MODELMELD_STALL_SHADOW", raising=False)
+    app = build_app(adapter=_EchoAdapter())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post("/v1/messages", json={
+            "model": "anthropic/modelmeld-auto",
+            "max_tokens": 256,
+            "messages": _STALL_MESSAGES,
+        })
+
+    assert resp.status_code == 200
+    assert "x-modelmeld-stall-shadow" not in resp.headers
+
+
+async def test_stall_shadow_skips_non_auto_policy(monkeypatch) -> None:
+    """-saver / plain models never participate, even with a stalled history."""
+    monkeypatch.setenv("MODELMELD_STALL_SHADOW", "on")
+    app = build_app(adapter=_EchoAdapter())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        resp = await client.post("/v1/messages", json={
+            "model": "anthropic/modelmeld-saver",
+            "max_tokens": 256,
+            "messages": _STALL_MESSAGES,
+        })
+
+    assert resp.status_code == 200
+    assert "x-modelmeld-stall-shadow" not in resp.headers
