@@ -39,6 +39,7 @@ class OpenAIAdapter(ProviderAdapter):
         http_client: httpx.AsyncClient | None = None,
         retry_config: RetryConfig | None = None,
         served_model: str | None = None,
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         try:
             from openai import AsyncOpenAI
@@ -64,6 +65,17 @@ class OpenAIAdapter(ProviderAdapter):
         self._retry_config = retry_config or RetryConfig()
         # F-8: operator-pinned upstream model (overrides request.model).
         self.served_model = served_model
+        # Provider-specific body extras merged into every call (e.g. OpenRouter's
+        # `provider` routing preference). None → nothing added to the wire.
+        self._extra_body = extra_body
+
+    def _create_kwargs(
+        self, request: ChatCompletionRequest, *, stream: bool
+    ) -> dict[str, Any]:
+        kwargs = self._to_params(request, stream=stream)
+        if self._extra_body:
+            kwargs["extra_body"] = self._extra_body
+        return kwargs
 
     def _to_params(
         self, request: ChatCompletionRequest, *, stream: bool
@@ -82,7 +94,7 @@ class OpenAIAdapter(ProviderAdapter):
 
         async def _call():
             return await self._client.chat.completions.create(
-                **self._to_params(request, stream=False)
+                **self._create_kwargs(request, stream=False)
             )
 
         try:
@@ -100,7 +112,7 @@ class OpenAIAdapter(ProviderAdapter):
 
         async def _open_stream():
             return await self._client.chat.completions.create(
-                **self._to_params(request, stream=True)
+                **self._create_kwargs(request, stream=True)
             )
 
         try:

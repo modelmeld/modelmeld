@@ -23,6 +23,26 @@ from modelmeld.adapters.openai_adapter import OpenAIAdapter
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
+def _provider_routing() -> dict | None:
+    """OpenRouter `provider` routing preference, sent on every request.
+
+    OpenRouter load-balances each request across the underlying backends that
+    serve a model. Because prompt caching is per-backend, default load-balancing
+    scatters a multi-turn session across backends, so the cache never accumulates
+    across turns. A deterministic `sort` pins a session's turns to one backend so
+    the cache builds; `price` also makes that backend the cheapest (cost-optimal),
+    and `allow_fallbacks` preserves availability if it's down.
+
+    Override the sort or disable via `MODELMELD_OPENROUTER_PROVIDER_SORT`
+    (e.g. `throughput`, or empty string to disable and restore default
+    load-balancing).
+    """
+    sort = os.environ.get("MODELMELD_OPENROUTER_PROVIDER_SORT", "price").strip()
+    if not sort:
+        return None
+    return {"sort": sort, "allow_fallbacks": True}
+
+
 class OpenRouterAdapter(OpenAIAdapter):
     name = "openrouter"
     is_egress = True
@@ -42,8 +62,10 @@ class OpenRouterAdapter(OpenAIAdapter):
                 "OpenRouterAdapter requires an API key "
                 "(pass api_key= or set OPENROUTER_API_KEY)."
             )
+        routing = _provider_routing()
         super().__init__(
             api_key=resolved_key,
             base_url=base_url or _OPENROUTER_BASE_URL,
             served_model=None,
+            extra_body={"provider": routing} if routing else None,
         )
