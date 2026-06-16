@@ -641,6 +641,34 @@ async def test_auto_structural_flag_ignores_reasoning_markers(
     assert "escalated=no" in decision.rationale
 
 
+# ~70k input tokens: over the 64k large-context escalate threshold, under the
+# 100k context window of the test registry's rows (so it's the PRIOR escalating,
+# not a context-window-fit fallback). No reasoning markers in the text.
+_BIG_CONTEXT = "# padding line of code for context size\n" * 7000
+
+
+async def test_auto_escalates_on_large_context() -> None:
+    """Large-context prior: a request whose estimated input exceeds the threshold
+    escalates to frontier regardless of reasoning markers — open-weight models
+    collapse on long-context repair past it."""
+    scout = CapabilityScout(registry=_mixed_tier_registry())
+    decision = await scout.choose(_policy_req("anthropic/modelmeld-auto", _BIG_CONTEXT))
+    assert decision.chosen_provider == "anthropic"
+    assert "large_context" in decision.rationale
+
+
+async def test_large_context_prior_disabled_via_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With the threshold set to 0 the prior is off; a marker-free large request
+    stays OSS (no escalation)."""
+    monkeypatch.setenv("MODELMELD_LARGE_CONTEXT_ESCALATE_TOKENS", "0")
+    scout = CapabilityScout(registry=_mixed_tier_registry())
+    decision = await scout.choose(_policy_req("anthropic/modelmeld-auto", _BIG_CONTEXT))
+    assert decision.chosen_provider != "anthropic"  # stayed OSS
+    assert "escalated=no" in decision.rationale
+
+
 async def test_auto_alias_single_marker_does_not_escalate() -> None:
     """Single marker is not enough — must be 2+ distinct."""
     scout = CapabilityScout(registry=_mixed_tier_registry())
