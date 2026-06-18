@@ -77,7 +77,7 @@ async def test_floor_falls_back_when_all_unreliable(monkeypatch) -> None:
     assert decision.chosen_model_id == "cheap-bad"
 
 
-async def test_unprobed_rows_pass_through(monkeypatch) -> None:
+async def test_unprobed_deprefered_when_reliable_exists(monkeypatch) -> None:
     monkeypatch.delenv("MODELMELD_AGENTIC_RELIABILITY_FLOOR", raising=False)
     registry = ModelRegistry([
         _entry("cheap-unscored", 0.1, coding=0.85, agentic=None),  # no measured score
@@ -85,5 +85,19 @@ async def test_unprobed_rows_pass_through(monkeypatch) -> None:
     ])
     scout = CapabilityScout(registry=registry, quality_threshold=0.70)
     decision = await scout.choose(_req_auto_tools())
-    # un-probed cheapest is NOT filtered (can't judge it) → it wins on cost
+    # un-probed cheapest is DE-PREFERRED: a measured-reliable model exists, so it
+    # wins despite being pricier (avoids the cheap-but-unmeasured trap).
+    assert decision.chosen_model_id == "reliable"
+
+
+async def test_unprobed_wins_when_no_measured_reliable(monkeypatch) -> None:
+    monkeypatch.delenv("MODELMELD_AGENTIC_RELIABILITY_FLOOR", raising=False)
+    registry = ModelRegistry([
+        _entry("cheap-unscored", 0.1, coding=0.85, agentic=None),   # un-probed, cheapest
+        _entry("measured-bad", 0.5, coding=0.80, agentic=0.20),     # measured, below floor
+    ])
+    scout = CapabilityScout(registry=registry, quality_threshold=0.70)
+    decision = await scout.choose(_req_auto_tools())
+    # no measured-RELIABLE model → fall back to the full ranking → cheapest wins
+    # (a genuinely-new/all-unprobed pool still routes; never 503).
     assert decision.chosen_model_id == "cheap-unscored"

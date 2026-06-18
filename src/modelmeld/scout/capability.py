@@ -470,27 +470,32 @@ class CapabilityScout:
             )
             quality_rationale = f"quality_agentic=capability_first(by={signal})"
 
-        # -auto agentic routing: drop models MEASURED unreliable on multi-provider
-        # agentic correctness, then keep the cheapest survivor (cheapest-RELIABLE,
-        # not cheapest-overall — the chronic shortcut-takers are cheap but ship
-        # latent multi-provider bugs). Only filters rows carrying a measured
-        # `agentic_coding` below the floor; un-probed rows pass through. Falls back
-        # to the full ranking if the floor would leave nothing — never 503s on
-        # reliability alone.
+        # -auto agentic routing: prefer the cheapest model with a MEASURED,
+        # reliable multi-provider-correctness score. A model qualifies only if it
+        # carries a measured `agentic_coding` >= floor — un-probed rows (no
+        # measured score) are DE-PREFERRED, not passed through, because the
+        # cheapest OSS coders are often unmeasured and would otherwise undercut a
+        # proven-reliable model (and some, e.g. gpt-oss-120b, are cheap but weak).
+        # If at least one measured-reliable model exists, restrict to those and
+        # take the cheapest; if NONE is measured-reliable, fall back to the full
+        # ranking (un-probed + below-floor) so a genuinely-new or all-unprobed
+        # pool still routes — never 503 on reliability alone. Tradeoff: a new
+        # model isn't picked for -auto agentic routes until it earns a measured
+        # score (or the operator sets MODELMELD_AGENTIC_RELIABILITY_FLOOR=0).
         auto_reliability_rationale = ""
         if policy is ModelMeldPolicy.AUTO and require_tool_support:
             floor = agentic_reliability_floor()
             if floor > 0:
                 reliable = [
                     (e, c) for (e, c) in ranked
-                    if e.task_scores.get(_AGENTIC_CAPABILITY_CATEGORY) is None
-                    or e.task_scores[_AGENTIC_CAPABILITY_CATEGORY] >= floor
+                    if e.task_scores.get(_AGENTIC_CAPABILITY_CATEGORY) is not None
+                    and e.task_scores[_AGENTIC_CAPABILITY_CATEGORY] >= floor
                 ]
-                dropped = len(ranked) - len(reliable)
-                if reliable and dropped:
+                if reliable and len(reliable) < len(ranked):
+                    dropped = len(ranked) - len(reliable)
                     ranked = reliable
                     auto_reliability_rationale = (
-                        f"auto_reliability=floor({floor};dropped={dropped})"
+                        f"auto_reliability=measured_floor({floor};dropped={dropped})"
                     )
 
         chosen_entry, chosen_cost = ranked[0]
