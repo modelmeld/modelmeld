@@ -232,9 +232,31 @@ def large_context_threshold() -> int:
     return _LARGE_CONTEXT_ESCALATE_TOKENS
 
 
+# -auto excludes models MEASURED unreliable on multi-provider agentic correctness
+# from agentic (tool-bearing) coding routes: a model whose `agentic_coding` score
+# sits below this floor ships latent multi-provider bugs too often to be a safe
+# cheap pick (e.g. the chronic shortcut-takers measured at 0-29% correct vs the
+# reliable coders at 50-88%). Conservative default; ONLY filters rows that carry a
+# measured score (un-probed rows pass through), and the caller falls back to the
+# full ranking if nothing clears it (never 503s on reliability alone). 0 disables.
+_AGENTIC_RELIABILITY_FLOOR = 0.40
+
+
+def agentic_reliability_floor() -> float:
+    """Min measured `agentic_coding` for a model to win an -auto agentic route."""
+    raw = os.environ.get("MODELMELD_AGENTIC_RELIABILITY_FLOOR", "").strip()
+    if raw:
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            pass
+    return _AGENTIC_RELIABILITY_FLOOR
+
+
 __all__ = [
     "POLICY_QUALITY_THRESHOLD",
     "ModelMeldPolicy",
+    "agentic_reliability_floor",
     "detect_reasoning_markers",
     "extract_user_text",
     "frontier_providers",
