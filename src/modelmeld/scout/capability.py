@@ -25,6 +25,7 @@ from modelmeld.scout.difficulty import (
 )
 from modelmeld.scout.policy import (
     ModelMeldPolicy,
+    agentic_reliability_floor,
     frontier_providers,
     large_context_threshold,
     oss_providers,
@@ -469,6 +470,29 @@ class CapabilityScout:
             )
             quality_rationale = f"quality_agentic=capability_first(by={signal})"
 
+        # -auto agentic routing: drop models MEASURED unreliable on multi-provider
+        # agentic correctness, then keep the cheapest survivor (cheapest-RELIABLE,
+        # not cheapest-overall — the chronic shortcut-takers are cheap but ship
+        # latent multi-provider bugs). Only filters rows carrying a measured
+        # `agentic_coding` below the floor; un-probed rows pass through. Falls back
+        # to the full ranking if the floor would leave nothing — never 503s on
+        # reliability alone.
+        auto_reliability_rationale = ""
+        if policy is ModelMeldPolicy.AUTO and require_tool_support:
+            floor = agentic_reliability_floor()
+            if floor > 0:
+                reliable = [
+                    (e, c) for (e, c) in ranked
+                    if e.task_scores.get(_AGENTIC_CAPABILITY_CATEGORY) is None
+                    or e.task_scores[_AGENTIC_CAPABILITY_CATEGORY] >= floor
+                ]
+                dropped = len(ranked) - len(reliable)
+                if reliable and dropped:
+                    ranked = reliable
+                    auto_reliability_rationale = (
+                        f"auto_reliability=floor({floor};dropped={dropped})"
+                    )
+
         chosen_entry, chosen_cost = ranked[0]
         fallbacks: list[str] = [
             entry.model_id for entry, _ in ranked[1 : 1 + self.fallback_depth]
@@ -488,6 +512,8 @@ class CapabilityScout:
             rationale = f"{rationale};{latency_rationale}"
         if quality_rationale:
             rationale = f"{rationale};{quality_rationale}"
+        if auto_reliability_rationale:
+            rationale = f"{rationale};{auto_reliability_rationale}"
 
         return CapabilityDecision(
             chosen_model_id=chosen_entry.model_id,
