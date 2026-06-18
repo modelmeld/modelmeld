@@ -7,7 +7,8 @@
     "reasoning",
     "simple_qa",
     "summarization",
-    "tool_use"
+    "tool_use",
+    "agentic_coding"
   ],
   "models": [
     {
@@ -17,7 +18,9 @@
       "context_window": 128000,
       "cost_per_m_input": 0.66,
       "cost_per_m_output": 1.0,
-      "task_scores": {"tool_use": 0.0},
+      "task_scores": {
+        "tool_use": 0.0
+      },
       "supports_tools": false,
       "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
@@ -28,7 +31,9 @@
       "context_window": 131072,
       "cost_per_m_input": 1.04,
       "cost_per_m_output": 1.04,
-      "task_scores": {"tool_use": 0.3},
+      "task_scores": {
+        "tool_use": 0.3
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
@@ -38,7 +43,9 @@
       "context_window": 131072,
       "cost_per_m_input": 0.1,
       "cost_per_m_output": 0.32,
-      "task_scores": {"tool_use": 0.55},
+      "task_scores": {
+        "tool_use": 0.55
+      },
       "source": "modelmeld_agentic_obs_2026_06_08"
     },
     {
@@ -48,8 +55,10 @@
       "context_window": 1048576,
       "cost_per_m_input": 0.3,
       "cost_per_m_output": 1.1,
-      "task_scores": {},
-      "source": "oss_overlay_2026_05_30"
+      "task_scores": {
+        "agentic_coding": 0.29
+      },
+      "source": "oss_overlay_2026_05_30+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "deepseek-v4-pro",
@@ -58,8 +67,11 @@
       "context_window": 512000,
       "cost_per_m_input": 2.1,
       "cost_per_m_output": 4.4,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.29
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_07+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "deepseek-v4-pro",
@@ -68,8 +80,11 @@
       "context_window": 1048576,
       "cost_per_m_input": 0.44,
       "cost_per_m_output": 0.87,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.29
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_07+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "gpt-oss-120b",
@@ -78,7 +93,9 @@
       "context_window": 131072,
       "cost_per_m_input": 0.5,
       "cost_per_m_output": 0.5,
-      "task_scores": {"tool_use": 0.09},
+      "task_scores": {
+        "tool_use": 0.09
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_07_inferred"
     },
     {
@@ -88,7 +105,9 @@
       "context_window": 131072,
       "cost_per_m_input": 0.15,
       "cost_per_m_output": 0.6,
-      "task_scores": {"tool_use": 0.09},
+      "task_scores": {
+        "tool_use": 0.09
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
@@ -98,7 +117,9 @@
       "context_window": 131072,
       "cost_per_m_input": 0.04,
       "cost_per_m_output": 0.18,
-      "task_scores": {"tool_use": 0.09},
+      "task_scores": {
+        "tool_use": 0.09
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
@@ -108,8 +129,11 @@
       "context_window": 262144,
       "cost_per_m_input": 0.6,
       "cost_per_m_output": 0.6,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.71
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_07+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "kimi-k2.6",
@@ -118,8 +142,11 @@
       "context_window": 262144,
       "cost_per_m_input": 1.2,
       "cost_per_m_output": 4.5,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.71
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_07+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "phi-4",
@@ -128,7 +155,9 @@
       "context_window": 16384,
       "cost_per_m_input": 0.07,
       "cost_per_m_output": 0.14,
-      "task_scores": {"tool_use": 0.0},
+      "task_scores": {
+        "tool_use": 0.0
+      },
       "supports_tools": false,
       "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
@@ -139,7 +168,9 @@
       "context_window": 262144,
       "cost_per_m_input": 0.11,
       "cost_per_m_output": 0.8,
-      "task_scores": {"tool_use": 0.85},
+      "task_scores": {
+        "tool_use": 0.85
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_07"
     },
     {
@@ -149,7 +180,9 @@
       "context_window": 202752,
       "cost_per_m_input": 0.43,
       "cost_per_m_output": 1.74,
-      "task_scores": {"tool_use": 0.81},
+      "task_scores": {
+        "tool_use": 0.81
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_10"
     },
     {
@@ -159,7 +192,9 @@
       "context_window": 1048576,
       "cost_per_m_input": 0.22,
       "cost_per_m_output": 1.8,
-      "task_scores": {"tool_use": 0.72},
+      "task_scores": {
+        "tool_use": 0.72
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_10"
     },
     {
@@ -169,7 +204,9 @@
       "context_window": 204800,
       "cost_per_m_input": 0.255,
       "cost_per_m_output": 1.0,
-      "task_scores": {"tool_use": 0.85},
+      "task_scores": {
+        "tool_use": 0.85
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_10"
     },
     {
@@ -179,7 +216,9 @@
       "context_window": 262144,
       "cost_per_m_input": 0.4,
       "cost_per_m_output": 2.0,
-      "task_scores": {"tool_use": 0.85},
+      "task_scores": {
+        "tool_use": 0.85
+      },
       "source": "modelmeld_tool_eval_v1_2026_06_10"
     },
     {
@@ -189,8 +228,11 @@
       "context_window": 1048576,
       "cost_per_m_input": 0.1,
       "cost_per_m_output": 0.2,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.5
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "minimax-m3",
@@ -199,8 +241,11 @@
       "context_window": 1048576,
       "cost_per_m_input": 0.3,
       "cost_per_m_output": 1.2,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.57
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "minimax-m3",
@@ -209,8 +254,11 @@
       "context_window": 524288,
       "cost_per_m_input": 0.3,
       "cost_per_m_output": 1.2,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.57
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "glm-5",
@@ -219,8 +267,11 @@
       "context_window": 202752,
       "cost_per_m_input": 0.6,
       "cost_per_m_output": 1.92,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.88
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "glm-5",
@@ -229,8 +280,11 @@
       "context_window": 202752,
       "cost_per_m_input": 1.0,
       "cost_per_m_output": 3.2,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.88
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "kimi-k2.6",
@@ -239,8 +293,11 @@
       "context_window": 262144,
       "cost_per_m_input": 0.68,
       "cost_per_m_output": 3.41,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.71
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "qwen3.7-plus",
@@ -249,8 +306,11 @@
       "context_window": 1000000,
       "cost_per_m_input": 0.32,
       "cost_per_m_output": 1.28,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.0
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "mimo-v2.5",
@@ -259,8 +319,11 @@
       "context_window": 1048576,
       "cost_per_m_input": 0.14,
       "cost_per_m_output": 0.28,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.12
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     },
     {
       "model_id": "hy3-preview",
@@ -269,8 +332,11 @@
       "context_window": 262144,
       "cost_per_m_input": 0.063,
       "cost_per_m_output": 0.21,
-      "task_scores": {"tool_use": 0.85},
-      "source": "modelmeld_tool_eval_v1_2026_06_13"
+      "task_scores": {
+        "tool_use": 0.85,
+        "agentic_coding": 0.25
+      },
+      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
     }
   ]
 }
