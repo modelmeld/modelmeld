@@ -263,15 +263,21 @@ def test_load_default_overlay_models_have_multiple_providers() -> None:
 
 
 def test_load_default_overlay_task_scores_inherit_from_base() -> None:
-    """Overlay rows with empty task_scores inherit fully from base by model_id."""
+    """Overlay rows inherit every base task_score per-key by model_id; an
+    overlay-only MEASURED score (agentic_coding) is layered on top without
+    disturbing the inherited base categories."""
     reg = MultiProviderModelRegistry.load_default()
-    # deepseek-v4-pro@fireworks has empty task_scores in the overlay JSON
-    # (eval was rate-limited there), so it inherits base scores wholesale.
+    # deepseek-v4-pro@fireworks carries only a measured agentic_coding in the
+    # overlay; the base coding/reasoning/etc. categories inherit wholesale.
     overlay_entry = reg.get_by_key("deepseek-v4-pro", "fireworks")
     base_entry = reg.get_by_key("deepseek-v4-pro", "vllm")
     assert overlay_entry is not None
     assert base_entry is not None
-    assert overlay_entry.task_scores == base_entry.task_scores
+    # every base category is inherited unchanged
+    for k, v in base_entry.task_scores.items():
+        assert overlay_entry.task_scores[k] == v
+    # plus the overlay's measured agentic_coding (RO-3 multi-provider-correct)
+    assert overlay_entry.task_scores["agentic_coding"] == 0.29
 
 
 def test_load_default_overlay_task_scores_merge_over_base() -> None:
