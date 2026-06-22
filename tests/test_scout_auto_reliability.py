@@ -22,7 +22,7 @@ from modelmeld.scout import CapabilityScout, ModelEntry, ModelRegistry
 
 
 def _entry(model_id: str, cost_in: float, *, coding: float,
-           agentic: float | None) -> ModelEntry:
+           agentic: float | None, enabled: bool = True) -> ModelEntry:
     # a tool-bearing request classifies as `tool_use`; carry both category scores
     # so the threshold gate passes and the agentic_coding floor is what decides.
     scores: dict[str, float] = {"coding": coding, "tool_use": coding}
@@ -32,6 +32,7 @@ def _entry(model_id: str, cost_in: float, *, coding: float,
         model_id=model_id, provider="vllm", context_window=100_000,
         cost_per_m_input=cost_in, cost_per_m_output=cost_in * 3,
         task_scores=scores, last_updated="2026-06-17", source="test",
+        enabled=enabled,
     )
 
 
@@ -101,3 +102,21 @@ async def test_unprobed_wins_when_no_measured_reliable(monkeypatch) -> None:
     # no measured-RELIABLE model → fall back to the full ranking → cheapest wins
     # (a genuinely-new/all-unprobed pool still routes; never 503).
     assert decision.chosen_model_id == "cheap-unscored"
+
+
+async def test_disabled_unprobed_is_not_chosen_as_fallback(monkeypatch) -> None:
+    """A disabled un-probed model must NOT be the -auto agentic fallback.
+
+    Without `enabled`, the de-prefer logic falls back to the full ranking when
+    nothing is measured-reliable — which could route to an un-validated model.
+    Disabling filters it out of `rank()` BEFORE the fallback, so the enabled
+    (measured-reliable) model wins even though the disabled one is cheaper.
+    """
+    monkeypatch.delenv("MODELMELD_AGENTIC_RELIABILITY_FLOOR", raising=False)
+    registry = ModelRegistry([
+        _entry("cheap-unvalidated", 0.1, coding=0.85, agentic=None, enabled=False),
+        _entry("reliable", 0.5, coding=0.80, agentic=0.71, enabled=True),
+    ])
+    scout = CapabilityScout(registry=registry, quality_threshold=0.70)
+    decision = await scout.choose(_req_auto_tools())
+    assert decision.chosen_model_id == "reliable"

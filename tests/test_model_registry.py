@@ -251,6 +251,82 @@ def test_rank_returns_all_candidates_sorted() -> None:
 
 
 # ---------------------------------------------------------------------------
+# enabled flag — disable-not-delete routing filter
+# ---------------------------------------------------------------------------
+
+def _toy_registry_with_disabled() -> ModelRegistry:
+    """Toy registry where the cheapest qualifying model is disabled."""
+    return ModelRegistry([
+        ModelEntry(
+            model_id="cheap-disabled", provider="vllm", context_window=32_000,
+            cost_per_m_input=0.05, cost_per_m_output=0.05,
+            task_scores={"coding": 0.90}, enabled=False,
+        ),
+        ModelEntry(
+            model_id="pricier-enabled", provider="vllm", context_window=32_000,
+            cost_per_m_input=0.50, cost_per_m_output=0.50,
+            task_scores={"coding": 0.90}, enabled=True,
+        ),
+    ])
+
+
+def test_enabled_defaults_true() -> None:
+    e = ModelEntry(
+        model_id="m", provider="p", context_window=1000,
+        cost_per_m_input=0.1, cost_per_m_output=0.1, task_scores={"coding": 0.9},
+    )
+    assert e.enabled is True
+
+
+def test_pick_skips_disabled_even_when_cheapest_and_qualifying() -> None:
+    reg = _toy_registry_with_disabled()
+    # cheap-disabled is cheaper AND clears the threshold, but is disabled →
+    # the pricier enabled row wins. The disabled row never routes.
+    assert reg.pick("coding", quality_threshold=0.80).model_id == "pricier-enabled"
+
+
+def test_rank_excludes_disabled() -> None:
+    reg = _toy_registry_with_disabled()
+    ranked = reg.rank("coding", quality_threshold=0.0)
+    assert [e.model_id for e, _ in ranked] == ["pricier-enabled"]
+
+
+def test_pick_none_when_only_candidate_is_disabled() -> None:
+    reg = ModelRegistry([
+        ModelEntry(
+            model_id="only-disabled", provider="vllm", context_window=32_000,
+            cost_per_m_input=0.05, cost_per_m_output=0.05,
+            task_scores={"coding": 0.95}, enabled=False,
+        ),
+    ])
+    # A disabled-only pool yields no route (the candidate-quarantine case).
+    assert reg.pick("coding", quality_threshold=0.50) is None
+
+
+def test_from_json_reads_enabled_and_defaults_true_when_absent() -> None:
+    payload = {
+        "version": 1,
+        "models": [
+            {
+                "model_id": "off", "provider": "p", "context_window": 1000,
+                "cost_per_m_input": 0.1, "cost_per_m_output": 0.2,
+                "task_scores": {"coding": 0.9}, "enabled": False,
+            },
+            {  # no `enabled` key → defaults True (backward compat)
+                "model_id": "legacy", "provider": "p", "context_window": 1000,
+                "cost_per_m_input": 0.1, "cost_per_m_output": 0.2,
+                "task_scores": {"coding": 0.9},
+            },
+        ],
+    }
+    reg = ModelRegistry.from_json(payload)
+    assert reg.get("off").enabled is False
+    assert reg.get("legacy").enabled is True
+    # the disabled row is filtered from routing; the legacy row routes
+    assert reg.pick("coding", quality_threshold=0.50).model_id == "legacy"
+
+
+# ---------------------------------------------------------------------------
 # JSON serialization round-trip
 # ---------------------------------------------------------------------------
 
