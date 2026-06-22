@@ -64,6 +64,15 @@ class ModelEntry:
     # below 7B parameters). CapabilityScout filters by this field
     # when the incoming request has `tools=[...]`.
     supports_tools: bool = True
+    # Whether this row is eligible to be routed to at all. Default True; a
+    # row with `enabled=False` stays in the registry (and keeps its scores,
+    # cost, latency) but is filtered out of `pick()`/`rank()` candidate
+    # selection entirely. This is the disable-not-delete switch: deprecate a
+    # model, quarantine a broken/ToS-problematic one, or hold a freshly-added
+    # candidate back until it has been validated — all without losing the row
+    # or its data. The registry/feed PRODUCER decides the policy that sets it;
+    # the gateway only honors the flag.
+    enabled: bool = True
     # --- Capability metadata for substitution-time feature reconciliation (B-3) ---
     # When alias/capability routing serves a different model than the client
     # tuned its request for, these tell the reconciler whether to forward,
@@ -242,6 +251,7 @@ class ModelRegistry:
                     source=row.get("source", ""),
                     provider_model_id=row.get("provider_model_id", ""),
                     supports_tools=bool(row.get("supports_tools", True)),
+                    enabled=bool(row.get("enabled", True)),
                     reasoning_interface=str(row.get("reasoning_interface", "none")),
                     max_output_tokens=(
                         int(row["max_output_tokens"])
@@ -306,6 +316,7 @@ class ModelRegistry:
         """Return the cheapest model meeting `quality_threshold` on `task_category`.
 
         Filters:
+        - enabled (disabled rows are never routed to)
         - task_scores[task_category] >= quality_threshold
         - provider in eligible_providers (if set)
         - context_window >= min_context_window
@@ -315,6 +326,8 @@ class ModelRegistry:
         """
         candidates: list[ModelEntry] = []
         for entry in self._by_id.values():
+            if not entry.enabled:
+                continue
             if eligible_providers is not None and entry.provider not in eligible_providers:
                 continue
             if entry.context_window < min_context_window:
@@ -348,6 +361,7 @@ class ModelRegistry:
         """All eligible candidates sorted cheapest-first. Returns (entry, blended_cost) pairs.
 
         Filters:
+          - enabled (disabled rows are never routed to)
           - task_scores[task_category] >= quality_threshold
           - provider in eligible_providers (if set)
           - context_window >= min_context_window
@@ -367,6 +381,8 @@ class ModelRegistry:
         """
         result: list[tuple[ModelEntry, float]] = []
         for entry in self._by_id.values():
+            if not entry.enabled:
+                continue
             if eligible_providers is not None and entry.provider not in eligible_providers:
                 continue
             if entry.context_window < min_context_window:
