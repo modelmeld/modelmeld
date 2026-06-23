@@ -16,6 +16,25 @@ auto-generated section markers.
 
 ## [0.18.0](https://github.com/modelmeld/modelmeld/compare/v0.17.0...v0.18.0) (2026-06-23)
 
+> [!IMPORTANT]
+> **Upgrade note — canonical model ids are now consistently dashed.**
+> Version-number separators in model ids changed from dots to dashes. If you pin any of these ids in config (routing rules, aliases, registry overrides), update them:
+>
+> | old | new |
+> |---|---|
+> | `deepseek-coder-v2.5` | `deepseek-coder-v2-5` |
+> | `deepseek-v3.2` | `deepseek-v3-2` |
+> | `glm-4.6` | `glm-4-6` |
+> | `kimi-k2.6` | `kimi-k2-6` |
+> | `llama-3.1-70b-instruct` | `llama-3-1-70b-instruct` |
+> | `llama-3.3-70b-instruct` | `llama-3-3-70b-instruct` |
+> | `mimo-v2.5` | `mimo-v2-5` |
+> | `qwen2.5-coder-32b-instruct` | `qwen2-5-coder-32b-instruct` |
+> | `qwen2.5-coder-7b-instruct` | `qwen2-5-coder-7b-instruct` |
+> | `qwen3.7-plus` | `qwen3-7-plus` |
+>
+> The policy aliases (`-saver`/`-auto`/`-quality`), routing behavior, and the model identifiers sent upstream are **unchanged** — only the canonical id strings differ. If you don't pin specific model ids, no action is needed.
+
 
 ### Features
 
