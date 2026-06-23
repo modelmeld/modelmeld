@@ -239,12 +239,22 @@ class MultiProviderModelRegistry(ModelRegistry):
             if entry.model_id not in betas_by_model and entry.supported_betas:
                 betas_by_model[entry.model_id] = entry.supported_betas
 
-        # Load the overlay JSON shipped with the package.
-        overlay_payload = json.loads(
-            resources.files("modelmeld.scout.data")
-            .joinpath("default_overlay.json")
-            .read_text(encoding="utf-8"),
-        )
+        # Load the overlay JSON shipped with the package. The overlay is an
+        # optional example of multi-provider availability; if it isn't present
+        # (e.g. a deployment that ships only the base registry), fall back to a
+        # base-only registry rather than failing to start.
+        try:
+            overlay_payload = json.loads(
+                resources.files("modelmeld.scout.data")
+                .joinpath("default_overlay.json")
+                .read_text(encoding="utf-8"),
+            )
+        except (FileNotFoundError, ModuleNotFoundError):
+            logger.info(
+                "default_overlay.json not present; using base registry only "
+                "(no multi-provider availability rows)",
+            )
+            overlay_payload = {"models": []}
         overlay_entries: list[ModelEntry] = []
         for row in overlay_payload.get("models", []):
             model_id = row["model_id"]

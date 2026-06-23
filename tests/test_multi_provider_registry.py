@@ -394,3 +394,25 @@ def test_default_multi_provider_registry_includes_base_models() -> None:
     actual = {e.model_id for e in reg.all_entries_multi()}
     missing = base_models - actual
     assert not missing, f"base registry models missing after merge: {missing}"
+
+
+def test_load_default_tolerates_missing_overlay(monkeypatch) -> None:
+    """The overlay is optional: if default_overlay.json isn't present,
+    load_default falls back to a base-only registry instead of crashing."""
+    from modelmeld.scout import multi_provider_registry as mpr
+
+    class _Missing:
+        def joinpath(self, *_a, **_k):
+            return self
+
+        def read_text(self, *_a, **_k):
+            raise FileNotFoundError("default_overlay.json")
+
+    monkeypatch.setattr(mpr.resources, "files", lambda *_a, **_k: _Missing())
+    reg = MultiProviderModelRegistry.load_default()
+    ids = {e.model_id for e in reg.all_entries_multi()}
+    # base models still present; no crash
+    assert "claude-opus-4-7" in ids
+    # no overlay-only provider rows (e.g. a fireworks/together availability)
+    providers = {e.provider for e in reg.all_entries_multi()}
+    assert "fireworks" not in providers and "together" not in providers
