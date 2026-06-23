@@ -23,8 +23,8 @@ def _agentic(reg, model_id: str) -> float | None:
 
 def test_measured_agentic_coding_present_on_leaders() -> None:
     reg = default_multi_provider_registry()
-    for m in ("glm-5", "kimi-k2.6", "minimax-m3", "deepseek-v4-flash",
-              "deepseek-v4-pro", "hy3-preview", "mimo-v2.5", "qwen3.7-plus"):
+    for m in ("glm-5", "kimi-k2-6", "minimax-m3", "deepseek-v4-flash",
+              "deepseek-v4-pro", "hy3-preview", "mimo-v2-5", "qwen3-7-plus"):
         assert _agentic(reg, m) is not None, f"missing agentic_coding for {m}"
 
 
@@ -33,9 +33,9 @@ def test_agentic_coding_corrects_the_manual_inversion() -> None:
     glm = _agentic(reg, "glm-5")
     # The reliable OSS coders outrank the chronic shortcut-takers — the opposite
     # of what the manual base coding estimates implied.
-    assert glm > _agentic(reg, "qwen3.7-plus")
-    assert glm > _agentic(reg, "mimo-v2.5")
-    assert _agentic(reg, "kimi-k2.6") > _agentic(reg, "hy3-preview")
+    assert glm > _agentic(reg, "qwen3-7-plus")
+    assert glm > _agentic(reg, "mimo-v2-5")
+    assert _agentic(reg, "kimi-k2-6") > _agentic(reg, "hy3-preview")
     # measured values are in [0, 1]
-    for m in ("glm-5", "qwen3.7-plus"):
+    for m in ("glm-5", "qwen3-7-plus"):
         assert 0.0 <= _agentic(reg, m) <= 1.0

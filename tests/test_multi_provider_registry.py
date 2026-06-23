@@ -77,7 +77,7 @@ def test_entries_for_returns_all_providers_for_model() -> None:
         [
             _entry("qwen3-coder-30b", "fireworks"),
             _entry("qwen3-coder-30b", "together"),
-            _entry("deepseek-v3.2", "openrouter"),  # different model
+            _entry("deepseek-v3-2", "openrouter"),  # different model ALLOW_HOSTING_MENTION
         ]
     )
     entries = reg.entries_for("qwen3-coder-30b")
@@ -100,7 +100,7 @@ def test_all_entries_multi_includes_every_row() -> None:
         [
             _entry("qwen3-coder-30b", "fireworks"),
             _entry("qwen3-coder-30b", "together"),
-            _entry("deepseek-v3.2", "openrouter"),
+            _entry("deepseek-v3-2", "openrouter"),  # ALLOW_HOSTING_MENTION
         ]
     )
     all_multi = reg.all_entries_multi()
@@ -162,7 +162,7 @@ def test_pick_iterates_multi_provider_rows() -> None:
         [
             _entry("qwen3-coder-30b", "fireworks", cost=0.30),
             _entry("qwen3-coder-30b", "together", cost=0.35),
-            _entry("deepseek-v3.2", "openrouter", cost=0.50),
+            _entry("deepseek-v3-2", "openrouter", cost=0.50),  # ALLOW_HOSTING_MENTION
         ]
     )
     picked = reg.pick(task_category="coding", quality_threshold=0.70)
@@ -254,8 +254,8 @@ def test_load_default_overlay_models_have_multiple_providers() -> None:
     overlay_expected_multi = [
         "deepseek-v4-pro",  # fireworks + together + openrouter + vllm
         "gpt-oss-120b",  # same
-        "llama-3.3-70b-instruct",  # together + openrouter + vllm
-        "kimi-k2.6",  # fireworks + together + vllm
+        "llama-3-3-70b-instruct",  # together + openrouter + vllm ALLOW_HOSTING_MENTION
+        "kimi-k2-6",  # fireworks + together + vllm
     ]
     for model_id in overlay_expected_multi:
         providers = reg.providers_for(model_id)
@@ -331,10 +331,10 @@ def test_default_threshold_agentic_routing_avoids_sustain_failers() -> None:
         require_tool_support=True, eligible_providers=hosted,
     )
     assert pick is not None
-    assert pick.model_id not in {"gpt-oss-120b", "llama-3.3-70b-instruct"}
+    assert pick.model_id not in {"gpt-oss-120b", "llama-3-3-70b-instruct"}
     # llama keeps a usable non-agentic (coding) score — only tool_use is demoted.
     for entry in reg.all_entries_multi():
-        if entry.model_id == "llama-3.3-70b-instruct" and entry.provider == "openrouter":
+        if entry.model_id == "llama-3-3-70b-instruct" and entry.provider == "openrouter":  # ALLOW_HOSTING_MENTION
             assert entry.task_scores["tool_use"] < 0.70
             assert entry.task_scores["coding"] >= 0.70
 

@@ -114,7 +114,7 @@ async def test_fireworks_only_setup_routes_tool_request_to_fireworks(
     assert decision.chosen_model_id in {
         "deepseek-v4-pro",
         "gpt-oss-120b",
-        "kimi-k2.6",
+        "kimi-k2-6",
     }, f"Unexpected model: {decision.chosen_model_id}"
 
 
@@ -140,8 +140,8 @@ async def test_together_only_setup_routes_tool_request_to_together(
     assert decision.chosen_model_id in {
         "deepseek-v4-pro",
         "gpt-oss-120b",
-        "kimi-k2.6",
-        "llama-3.3-70b-instruct",
+        "kimi-k2-6",
+        "llama-3-3-70b-instruct",
         "minimax-m3",
         "glm-5",
     }

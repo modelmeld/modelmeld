@@ -12,7 +12,7 @@
   ],
   "models": [
     {
-      "model_id": "qwen2.5-coder-32b-instruct",
+      "model_id": "qwen2-5-coder-32b-instruct",
       "provider": "openrouter",
       "provider_model_id": "qwen/qwen-2.5-coder-32b-instruct",
       "context_window": 128000,
@@ -24,7 +24,7 @@
       "supports_tools": false
     },
     {
-      "model_id": "llama-3.3-70b-instruct",
+      "model_id": "llama-3-3-70b-instruct",
       "provider": "together",
       "provider_model_id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
       "context_window": 131072,
@@ -35,7 +35,7 @@
       }
     },
     {
-      "model_id": "llama-3.3-70b-instruct",
+      "model_id": "llama-3-3-70b-instruct",
       "provider": "openrouter",
       "provider_model_id": "meta-llama/llama-3.3-70b-instruct",
       "context_window": 131072,
@@ -114,7 +114,7 @@
       }
     },
     {
-      "model_id": "kimi-k2.6",
+      "model_id": "kimi-k2-6",
       "provider": "fireworks",
       "provider_model_id": "accounts/fireworks/models/kimi-k2p6",
       "context_window": 262144,
@@ -126,7 +126,7 @@
       }
     },
     {
-      "model_id": "kimi-k2.6",
+      "model_id": "kimi-k2-6",
       "provider": "together",
       "provider_model_id": "moonshotai/Kimi-K2.6",
       "context_window": 262144,
@@ -161,7 +161,7 @@
       }
     },
     {
-      "model_id": "glm-4.6",
+      "model_id": "glm-4-6",
       "provider": "openrouter",
       "provider_model_id": "z-ai/glm-4.6",
       "context_window": 202752,
@@ -265,7 +265,7 @@
       }
     },
     {
-      "model_id": "kimi-k2.6",
+      "model_id": "kimi-k2-6",
       "provider": "openrouter",
       "provider_model_id": "moonshotai/kimi-k2.6",
       "context_window": 262144,
@@ -277,7 +277,7 @@
       }
     },
     {
-      "model_id": "qwen3.7-plus",
+      "model_id": "qwen3-7-plus",
       "provider": "openrouter",
       "provider_model_id": "qwen/qwen3.7-plus",
       "context_window": 1000000,
@@ -289,7 +289,7 @@
       }
     },
     {
-      "model_id": "mimo-v2.5",
+      "model_id": "mimo-v2-5",
       "provider": "openrouter",
       "provider_model_id": "xiaomi/mimo-v2.5",
       "context_window": 1048576,

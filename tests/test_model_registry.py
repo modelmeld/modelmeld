@@ -32,8 +32,8 @@ def test_default_registry_has_known_models() -> None:
     expected_subset = {
         "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5",
         "gpt-5", "gpt-5-mini",
-        "qwen2.5-coder-32b-instruct", "qwen2.5-coder-7b-instruct",
-        "deepseek-v3.2",
+        "qwen2-5-coder-32b-instruct", "qwen2-5-coder-7b-instruct",
+        "deepseek-v3-2",
     }
     actual = {e.model_id for e in reg.all_entries()}
     missing = expected_subset - actual
@@ -89,8 +89,8 @@ def test_default_registry_supports_tools_matches_openrouter_audit() -> None:
         "granite-4-micro",
         "gemma-3-4b",
         "deepseek-r1-distill-llama-70b",
-        "qwen2.5-coder-7b-instruct",
-        "qwen2.5-coder-32b-instruct",
+        "qwen2-5-coder-7b-instruct",
+        "qwen2-5-coder-32b-instruct",
     }
     for model_id in expected_no_tool_support:
         entry = reg.get(model_id)
@@ -106,7 +106,7 @@ def test_default_registry_oss_premium_tier_supports_tools() -> None:
     tool calls per SLM-for-Agents research. Default supports_tools=True."""
     reg = default_registry()
     for premium_id in (
-        "deepseek-v4-pro", "kimi-k2.6", "qwen3-coder-480b",
+        "deepseek-v4-pro", "kimi-k2-6", "qwen3-coder-480b",
         "gpt-oss-120b", "llama-4-scout", "deepseek-r1",
     ):
         entry = reg.get(premium_id)
