@@ -14,6 +14,37 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.18.0](https://github.com/modelmeld/modelmeld/compare/v0.17.0...v0.18.0) (2026-06-23)
+
+
+### Features
+
+* **adapters:** deterministic upstream ([#110](https://github.com/modelmeld/modelmeld/issues/110)) ([5b3f412](https://github.com/modelmeld/modelmeld/commit/5b3f412c045613345850a6a82cde1394860f393d))
+* **cli:** add `modelmeld setup --self-host` onboarding wizard ([#102](https://github.com/modelmeld/modelmeld/issues/102)) ([d8dc908](https://github.com/modelmeld/modelmeld/commit/d8dc908231dd99bb7690380238fc1da86d08cd81))
+* **registry:** add claude-opus-4-8 to base registry ([#106](https://github.com/modelmeld/modelmeld/issues/106)) ([17a7c06](https://github.com/modelmeld/modelmeld/commit/17a7c06c06db6b651e37c4944fc5df0673258ab3))
+* **registry:** add cost-efficient leader coders (qwen3.7-plus, mimo-v2.5, hy3-preview) ([#105](https://github.com/modelmeld/modelmeld/issues/105)) ([232445b](https://github.com/modelmeld/modelmeld/commit/232445bb37ca308c40dda254fc9af231158b605a))
+* **registry:** add current leader coders to the multi-provider overlay ([#103](https://github.com/modelmeld/modelmeld/issues/103)) ([68c8162](https://github.com/modelmeld/modelmeld/commit/68c8162b51bc707f00bb3fd12e72e800ff2d8081))
+* **registry:** encode measured agentic_coding on overlay leader rows ([#113](https://github.com/modelmeld/modelmeld/issues/113)) ([4c6077c](https://github.com/modelmeld/modelmeld/commit/4c6077c893c3e792618928121fbfa7d5bebb22e7))
+* **scout:** -auto prefers the cheapest RELIABLE model on agentic routes ([#114](https://github.com/modelmeld/modelmeld/issues/114)) ([7f93244](https://github.com/modelmeld/modelmeld/commit/7f93244f51e501e29b2cdad02cf854ef1906a7f4))
+* **scout:** add per-model `enabled` flag to gate routing ([#116](https://github.com/modelmeld/modelmeld/issues/116)) ([b8dad1c](https://github.com/modelmeld/modelmeld/commit/b8dad1c63547e36f56de79bccbdbb8d93d581a7f))
+* **scout:** de-prefer un-probed models on -auto agentic routes ([#115](https://github.com/modelmeld/modelmeld/issues/115)) ([7b7bd25](https://github.com/modelmeld/modelmeld/commit/7b7bd25344aa3d30d6ce83959cc36afeda67d2d5))
+* **scout:** large-context escalation prior for -auto ([#111](https://github.com/modelmeld/modelmeld/issues/111)) ([2a66cb7](https://github.com/modelmeld/modelmeld/commit/2a66cb758d4561fd57b298376ace32ffed81bffb))
+* **scout:** observe-only stall detection for reactive escalation (shadow, default off) ([#112](https://github.com/modelmeld/modelmeld/issues/112)) ([c5c4d8e](https://github.com/modelmeld/modelmeld/commit/c5c4d8ed80ea1436b9a2c0039a5987fbfe0d5d57))
+* **scout:** structural escalate-detector for -auto (flag-gated, default off) ([#109](https://github.com/modelmeld/modelmeld/issues/109)) ([d86788c](https://github.com/modelmeld/modelmeld/commit/d86788c8051727a71554eac702280bc75c25c998))
+
+
+### Bug Fixes
+
+* **adapters:** Together health check must tolerate its bare-list /models ([#104](https://github.com/modelmeld/modelmeld/issues/104)) ([a7ca2cd](https://github.com/modelmeld/modelmeld/commit/a7ca2cd9410b90a928686a984829444c8b19a86a))
+* **routing:** apply provider_model_id on capability egress, not the canonical id ([#99](https://github.com/modelmeld/modelmeld/issues/99)) ([8580bd7](https://github.com/modelmeld/modelmeld/commit/8580bd75e84eabac98635a66fd851b31febb4a0c))
+* **translation:** forward cache_control on Anthropic-&gt;OpenAI so providers can cache ([#108](https://github.com/modelmeld/modelmeld/issues/108)) ([4a68775](https://github.com/modelmeld/modelmeld/commit/4a68775684e941b7c23d30b2f7671c771433850c))
+* **translation:** forward Codex reasoning.effort on the Responses surface ([#101](https://github.com/modelmeld/modelmeld/issues/101)) ([ed03cce](https://github.com/modelmeld/modelmeld/commit/ed03cce9062da28dbcb524cc2549337707e3f4da))
+
+
+### Refactors
+
+* **registry:** use a consistent dashed convention for model ids ([#118](https://github.com/modelmeld/modelmeld/issues/118)) ([3915a3f](https://github.com/modelmeld/modelmeld/commit/3915a3f4a7b7f0b140fa1c2b23c7c8b718dc9bb6))
+
 ## [0.17.0](https://github.com/modelmeld/modelmeld/compare/v0.16.1...v0.17.0) (2026-06-12)
 
 
