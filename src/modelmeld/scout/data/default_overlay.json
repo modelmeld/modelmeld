@@ -1,7 +1,7 @@
 {
   "version": 1,
   "snapshot_release_date": "2026-05-30",
-  "notes": "Multi-provider availability overlay for canonical OSS coding models. Loaded automatically by MultiProviderModelRegistry.load_default() on top of the base default_registry.json. Each row adds one (model_id, provider) availability with its provider-specific model identifier and cost. Task scores merge over the base registry entry for the same model_id (overlay row keys override base per-key; unspecified categories are inherited). Costs are per million tokens (USD), validated against the upstream providers' live model catalogs on the snapshot release date via scripts/validate_overlay.py for Together and OpenRouter; Fireworks catalog responses omit pricing, so Fireworks rows use the most recent published rate-card values and may drift first. tool_use scores sourced modelmeld_tool_eval_v1_2026_06_07 are MEASURED per (model, provider) on an agentic multi-step bug-fix eval, calibrated onto the registry scale by anchoring the eval's top frontier model (claude-sonnet-4-6, which scored 1.0 on the eval) to its registry tool_use of 0.85 (score = eval_pass_rate * 0.85); a model that ties sonnet on the eval is placed at sonnet, never above (the v1 toy-bug set cannot establish superiority over frontier). The full curated lineup with weekly refresh and provider-reliability data is available via the live feed (MODELMELD_REGISTRY_FEED_URL + license key). See docs/registry-feed.md.",
+  "notes": "Example multi-provider availability overlay for the canonical OSS coding models. Loaded by MultiProviderModelRegistry.load_default() on top of default_registry.json; each row adds one (model_id, provider) availability with its provider-specific model identifier and published-rate cost (USD per million tokens). Capability scores merge over the base registry entry for the same model_id (overlay keys override per-key; unspecified categories inherited). supports_tools=false marks models that do not reliably support tool-calling. Illustrative example for testing multi-provider routing with your own provider keys; not a curated production lineup.",
   "task_categories": [
     "coding",
     "reasoning",
@@ -21,8 +21,7 @@
       "task_scores": {
         "tool_use": 0.0
       },
-      "supports_tools": false,
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      "supports_tools": false
     },
     {
       "model_id": "llama-3.3-70b-instruct",
@@ -33,8 +32,7 @@
       "cost_per_m_output": 1.04,
       "task_scores": {
         "tool_use": 0.3
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      }
     },
     {
       "model_id": "llama-3.3-70b-instruct",
@@ -45,8 +43,7 @@
       "cost_per_m_output": 0.32,
       "task_scores": {
         "tool_use": 0.55
-      },
-      "source": "modelmeld_agentic_obs_2026_06_08"
+      }
     },
     {
       "model_id": "deepseek-v4-pro",
@@ -57,8 +54,7 @@
       "cost_per_m_output": 1.1,
       "task_scores": {
         "agentic_coding": 0.29
-      },
-      "source": "oss_overlay_2026_05_30+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "deepseek-v4-pro",
@@ -70,8 +66,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.29
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "deepseek-v4-pro",
@@ -83,8 +78,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.29
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "gpt-oss-120b",
@@ -95,8 +89,7 @@
       "cost_per_m_output": 0.5,
       "task_scores": {
         "tool_use": 0.09
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07_inferred"
+      }
     },
     {
       "model_id": "gpt-oss-120b",
@@ -107,8 +100,7 @@
       "cost_per_m_output": 0.6,
       "task_scores": {
         "tool_use": 0.09
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      }
     },
     {
       "model_id": "gpt-oss-120b",
@@ -119,8 +111,7 @@
       "cost_per_m_output": 0.18,
       "task_scores": {
         "tool_use": 0.09
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      }
     },
     {
       "model_id": "kimi-k2.6",
@@ -132,8 +123,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.71
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "kimi-k2.6",
@@ -145,8 +135,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.71
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "phi-4",
@@ -158,8 +147,7 @@
       "task_scores": {
         "tool_use": 0.0
       },
-      "supports_tools": false,
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      "supports_tools": false
     },
     {
       "model_id": "qwen3-coder-next",
@@ -170,8 +158,7 @@
       "cost_per_m_output": 0.8,
       "task_scores": {
         "tool_use": 0.85
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_07"
+      }
     },
     {
       "model_id": "glm-4.6",
@@ -182,8 +169,7 @@
       "cost_per_m_output": 1.74,
       "task_scores": {
         "tool_use": 0.81
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_10"
+      }
     },
     {
       "model_id": "qwen3-coder-480b",
@@ -194,8 +180,7 @@
       "cost_per_m_output": 1.8,
       "task_scores": {
         "tool_use": 0.72
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_10"
+      }
     },
     {
       "model_id": "minimax-m2",
@@ -206,8 +191,7 @@
       "cost_per_m_output": 1.0,
       "task_scores": {
         "tool_use": 0.85
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_10"
+      }
     },
     {
       "model_id": "devstral-2512",
@@ -218,8 +202,7 @@
       "cost_per_m_output": 2.0,
       "task_scores": {
         "tool_use": 0.85
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_10"
+      }
     },
     {
       "model_id": "deepseek-v4-flash",
@@ -231,8 +214,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.5
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "minimax-m3",
@@ -244,8 +226,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.57
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "minimax-m3",
@@ -257,8 +238,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.57
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "glm-5",
@@ -270,8 +250,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.88
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "glm-5",
@@ -283,8 +262,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.88
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "kimi-k2.6",
@@ -296,8 +274,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.71
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "qwen3.7-plus",
@@ -309,8 +286,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.0
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "mimo-v2.5",
@@ -322,8 +298,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.12
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     },
     {
       "model_id": "hy3-preview",
@@ -335,8 +310,7 @@
       "task_scores": {
         "tool_use": 0.85,
         "agentic_coding": 0.25
-      },
-      "source": "modelmeld_tool_eval_v1_2026_06_13+ro3_multiprovider_v1_2026_06_17"
+      }
     }
   ]
 }
