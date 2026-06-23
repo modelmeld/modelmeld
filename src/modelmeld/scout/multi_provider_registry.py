@@ -7,11 +7,11 @@ ModelEntry rows per model_id, keyed by ``(model_id, provider)``.
 The base ``ModelRegistry`` keeps a one-row-per-model_id shape (the
 ``_by_id`` dict collapses duplicates by overwriting). That works fine
 for routing when each canonical model has a single canonical upstream
-(e.g., ``claude-opus-4-7`` lives on Anthropic; ``qwen2.5-coder-7b`` lives
+(e.g., ``claude-opus-4-7`` lives on Anthropic; ``qwen2-5-coder-7b`` lives
 on a self-hosted vLLM endpoint).
 
 In practice, the same open-weight model is served by multiple
-upstream providers — ``qwen2.5-coder-7b-instruct`` is available via
+upstream providers — ``qwen2-5-coder-7b-instruct`` is available via
 Fireworks, Together, OpenRouter, AND self-hosted vLLM. Each provider
 has its own ``provider_model_id`` (the path the upstream expects),
 cost per million tokens, and reliability profile.

@@ -128,7 +128,7 @@ async def test_vllm_and_tensorrt_llm_parity_on_identical_request() -> None:
     trtllm._client.chat.completions.create = capture_into_trtllm  # type: ignore[method-assign]
 
     request = ChatCompletionRequest(
-        model="qwen2.5-coder-7b-instruct",
+        model="qwen2-5-coder-7b-instruct",
         messages=[{"role": "user", "content": "compute 2+2"}],
         temperature=0.0,
         seed=42,
@@ -139,7 +139,7 @@ async def test_vllm_and_tensorrt_llm_parity_on_identical_request() -> None:
 
     # Bit-for-bit identical: same model, messages, temperature, seed, max tokens
     assert vllm_capture == trtllm_capture
-    assert vllm_capture["model"] == "qwen2.5-coder-7b-instruct"
+    assert vllm_capture["model"] == "qwen2-5-coder-7b-instruct"
     assert vllm_capture["temperature"] == 0.0
     assert vllm_capture["seed"] == 42
 
