@@ -108,11 +108,19 @@ _AUTO_LATENCY_WEIGHT = 0.02
 # small fixed reference.
 _AGENTIC_REF_OUTPUT_TOKENS = 128
 
-# Capability category `-quality` ranks agentic (tool-bearing) requests by.
-# Sourced from AA's Coding Index via the live registry feed (a sustained-
-# agentic-coding success-rate prior); absent in the OSS snapshot, where the
-# scout falls back per-model to the request's category score.
+# The agentic-coding capability/value score the scout ranks + floors agentic
+# routes by. This is the operator's in-house convergence/cost-per-completed
+# measurement (the registry feed carries it; absent in the OSS snapshot, where
+# the scout falls back per-model to the request's category score). It is the
+# value-per-$ RANKER on top of the normalized `coding` capability PREFILTER.
 _AGENTIC_CAPABILITY_CATEGORY = "agentic_coding"
+
+# Classifier categories that constitute the "agentic-coding axis" — coding work,
+# whether or not the turn happens to carry a tools=[] array. The agentic
+# admission floor, the `-auto` reliability floor, and the `-quality` capability
+# re-rank apply to these (not only tool-bearing requests), so a plain coding
+# turn still routes by the agentic value-per-$ signal.
+_AGENTIC_ROUTE_CATEGORIES = frozenset({"coding", "tool_use"})
 
 # Optional dependency: framework-supplied hints. Imported under
 # TYPE_CHECKING to avoid an import cycle (api.routing_hints imports task_category).
@@ -406,6 +414,10 @@ class CapabilityScout:
         # in the model's context window so the response isn't truncated.
         require_tool_support = bool(request.tools)
         min_ctx_required = self._required_context_window(request)
+        # The agentic-coding axis (coding work, tools or not). Drives the
+        # agentic admission floor + the RO-3 re-rank/floor below, so a plain
+        # coding turn routes by the same value-per-$ signal as a tool-bearing one.
+        is_agentic_route = category in _AGENTIC_ROUTE_CATEGORIES
 
         # D1 latency term: only `-auto` + tool-bearing (agentic) requests rank
         # on latency-adjusted cost. `-saver` and non-alias requests stay pure
@@ -421,6 +433,13 @@ class CapabilityScout:
                 f"d1=latency(w={_AUTO_LATENCY_WEIGHT};ref_in={latency_ref_input})"
             )
 
+        # Agentic-axis routes ALSO admit models with a reliable in-house RO-3
+        # `agentic_coding` score even if they lack a (normalized) `coding` score
+        # — a model proven to converge on real tasks is a capable coder, so it
+        # isn't benched for want of an external benchmark number.
+        agentic_admit_floor = (
+            agentic_reliability_floor() if is_agentic_route else None
+        )
         ranked = self.registry.rank(
             task_category=category,
             quality_threshold=threshold,
@@ -430,6 +449,7 @@ class CapabilityScout:
             latency_weight=latency_weight,
             latency_ref_input_tokens=latency_ref_input,
             latency_ref_output_tokens=_AGENTIC_REF_OUTPUT_TOKENS,
+            agentic_admit_floor=agentic_admit_floor,
         )
         if not ranked:
             raise NoEligibleModelError(
@@ -457,7 +477,7 @@ class CapabilityScout:
         # mix is monotonic and degrades gracefully to the prior behavior when
         # the prior is absent.
         quality_rationale = ""
-        if policy is ModelMeldPolicy.QUALITY and require_tool_support:
+        if policy is ModelMeldPolicy.QUALITY and is_agentic_route:
             def _capability(entry: ModelEntry) -> float:
                 ts = entry.task_scores
                 return ts.get(_AGENTIC_CAPABILITY_CATEGORY, ts.get(category, 0.0))
@@ -483,7 +503,7 @@ class CapabilityScout:
         # model isn't picked for -auto agentic routes until it earns a measured
         # score (or the operator sets MODELMELD_AGENTIC_RELIABILITY_FLOOR=0).
         auto_reliability_rationale = ""
-        if policy is ModelMeldPolicy.AUTO and require_tool_support:
+        if policy is ModelMeldPolicy.AUTO and is_agentic_route:
             floor = agentic_reliability_floor()
             if floor > 0:
                 reliable = [

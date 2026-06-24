@@ -44,6 +44,17 @@ def _req_auto_tools() -> ChatCompletionRequest:
     )
 
 
+def _req_auto_coding() -> ChatCompletionRequest:
+    # No tools — classifies as `coding` (the agentic axis), NOT `tool_use`.
+    return ChatCompletionRequest(
+        model="anthropic/modelmeld-auto",
+        messages=[UserMessage(
+            role="user",
+            content="write a python function to merge two sorted lists",
+        )],
+    )
+
+
 async def test_floor_excludes_cheap_shortcut_taker(monkeypatch) -> None:
     monkeypatch.delenv("MODELMELD_AGENTIC_RELIABILITY_FLOOR", raising=False)  # default 0.40
     registry = ModelRegistry([
@@ -102,6 +113,22 @@ async def test_unprobed_wins_when_no_measured_reliable(monkeypatch) -> None:
     # no measured-RELIABLE model → fall back to the full ranking → cheapest wins
     # (a genuinely-new/all-unprobed pool still routes; never 503).
     assert decision.chosen_model_id == "cheap-unscored"
+
+
+async def test_auto_admits_ro3_model_without_a_coding_score(monkeypatch) -> None:
+    """C4 admission: a model with a reliable RO-3 score but NO coding score is
+    routable on a coding route (would 503 before — coding 0.0 < threshold)."""
+    monkeypatch.delenv("MODELMELD_AGENTIC_RELIABILITY_FLOOR", raising=False)
+    registry = ModelRegistry([
+        ModelEntry(
+            model_id="ro3-only", provider="vllm", context_window=200_000,
+            cost_per_m_input=0.1, cost_per_m_output=0.1,
+            task_scores={"agentic_coding": 0.6},  # NO coding score
+        ),
+    ])
+    scout = CapabilityScout(registry=registry, quality_threshold=0.70)
+    decision = await scout.choose(_req_auto_coding())
+    assert decision.chosen_model_id == "ro3-only"
 
 
 async def test_disabled_unprobed_is_not_chosen_as_fallback(monkeypatch) -> None:

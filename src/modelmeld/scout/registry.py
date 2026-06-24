@@ -357,6 +357,7 @@ class ModelRegistry:
         latency_weight: float = 0.0,
         latency_ref_input_tokens: int = 0,
         latency_ref_output_tokens: int = 0,
+        agentic_admit_floor: float | None = None,
     ) -> list[tuple[ModelEntry, float]]:
         """All eligible candidates sorted cheapest-first. Returns (entry, blended_cost) pairs.
 
@@ -378,6 +379,15 @@ class ModelRegistry:
         the effective key), so callers' cost reporting stays truthful.
         ``latency_weight == 0`` (the default) is byte-identical to the old
         cost-only ranking — this is what keeps ``-saver`` ranking unchanged.
+
+        ``agentic_admit_floor`` (agentic-axis routes): when set, a model is ALSO
+        admitted if it has NO ``task_category`` score at all but its in-house
+        ``agentic_coding`` (RO-3) score is >= this floor. A model proven to
+        converge on real agentic-coding tasks is a capable coder even when no
+        external benchmark has scored it — so it isn't benched for lack of a
+        ``coding`` number. This deliberately does NOT admit a model the benchmark
+        DID score below threshold (it was measured and found wanting). None
+        (default) keeps the pure-threshold gate.
         """
         result: list[tuple[ModelEntry, float]] = []
         for entry in self._by_id.values():
@@ -389,7 +399,15 @@ class ModelRegistry:
                 continue
             if require_tool_support and not entry.supports_tools:
                 continue
-            if not entry.meets_threshold(task_category, quality_threshold):
+            admitted = entry.meets_threshold(task_category, quality_threshold) or (
+                # RO-3 admission applies ONLY to models the benchmark hasn't
+                # scored on this category (the coverage gap) — NOT to ones it
+                # measured below threshold (those were tested and found wanting).
+                agentic_admit_floor is not None
+                and task_category not in entry.task_scores
+                and entry.task_scores.get("agentic_coding", 0.0) >= agentic_admit_floor
+            )
+            if not admitted:
                 continue
             result.append((entry, entry.blended_cost_per_m()))
         return _sort_latency_adjusted(

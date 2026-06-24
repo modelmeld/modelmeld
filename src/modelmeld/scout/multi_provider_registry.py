@@ -117,6 +117,7 @@ class MultiProviderModelRegistry(ModelRegistry):
         latency_weight: float = 0.0,
         latency_ref_input_tokens: int = 0,
         latency_ref_output_tokens: int = 0,
+        agentic_admit_floor: float | None = None,
     ) -> list[tuple[ModelEntry, float]]:
         """Multi-provider rank: iterates over every ``(model_id, provider)``
         row, not just the base's collapsed ``_by_id`` representatives.
@@ -137,13 +138,22 @@ class MultiProviderModelRegistry(ModelRegistry):
         """
         result: list[tuple[ModelEntry, float]] = []
         for entry in self._by_key.values():
+            if not entry.enabled:
+                continue
             if eligible_providers is not None and entry.provider not in eligible_providers:
                 continue
             if entry.context_window < min_context_window:
                 continue
             if require_tool_support and not entry.supports_tools:
                 continue
-            if not entry.meets_threshold(task_category, quality_threshold):
+            admitted = entry.meets_threshold(task_category, quality_threshold) or (
+                # RO-3 admission for the coverage gap only: a model the benchmark
+                # hasn't scored on this category but proven by in-house RO-3.
+                agentic_admit_floor is not None
+                and task_category not in entry.task_scores
+                and entry.task_scores.get("agentic_coding", 0.0) >= agentic_admit_floor
+            )
+            if not admitted:
                 continue
             result.append((entry, entry.blended_cost_per_m()))
         return _sort_latency_adjusted(
@@ -167,6 +177,8 @@ class MultiProviderModelRegistry(ModelRegistry):
         """
         candidates: list[ModelEntry] = []
         for entry in self._by_key.values():
+            if not entry.enabled:
+                continue
             if eligible_providers is not None and entry.provider not in eligible_providers:
                 continue
             if entry.context_window < min_context_window:
