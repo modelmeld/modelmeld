@@ -241,6 +241,40 @@ def test_pick_tiebreak_prefers_larger_window() -> None:
     assert reg.pick("coding", quality_threshold=0.8).model_id == "big-window"
 
 
+def test_rank_agentic_admit_floor_admits_ro3_proven_model() -> None:
+    """A model with a reliable in-house agentic_coding score is admitted for an
+    agentic route even if it has no (or sub-threshold) `coding` score."""
+    reg = ModelRegistry([
+        ModelEntry(
+            model_id="ro3-proven", provider="vllm", context_window=100_000,
+            cost_per_m_input=0.1, cost_per_m_output=0.1,
+            task_scores={"agentic_coding": 0.6},  # NO coding score; RO-3 0.6
+        ),
+        ModelEntry(
+            model_id="benchmarked", provider="vllm", context_window=100_000,
+            cost_per_m_input=0.5, cost_per_m_output=0.5,
+            task_scores={"coding": 0.9},
+        ),
+    ])
+    # Without the admit floor, only the benchmarked model clears the coding gate.
+    assert [e.model_id for e, _ in reg.rank("coding", 0.70)] == ["benchmarked"]
+    # With the admit floor, the RO-3-proven model (agentic 0.6 >= 0.40) is admitted too.
+    ids = {e.model_id for e, _ in reg.rank("coding", 0.70, agentic_admit_floor=0.40)}
+    assert ids == {"ro3-proven", "benchmarked"}
+
+
+def test_rank_agentic_admit_floor_excludes_below_floor() -> None:
+    """A model whose RO-3 score is below the floor (and no coding) stays out."""
+    reg = ModelRegistry([
+        ModelEntry(
+            model_id="ro3-weak", provider="vllm", context_window=100_000,
+            cost_per_m_input=0.1, cost_per_m_output=0.1,
+            task_scores={"agentic_coding": 0.20},  # below 0.40 floor, no coding
+        ),
+    ])
+    assert reg.rank("coding", 0.70, agentic_admit_floor=0.40) == []
+
+
 def test_rank_returns_all_candidates_sorted() -> None:
     reg = _toy_registry()
     ranked = reg.rank("simple_qa", quality_threshold=0.0)

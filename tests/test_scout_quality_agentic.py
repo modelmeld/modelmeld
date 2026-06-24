@@ -91,11 +91,38 @@ async def test_quality_agentic_breaks_capability_ties_by_cost() -> None:
     assert decision.chosen_model_id == "cheap-strong"
 
 
-async def test_quality_simple_request_stays_cost_first() -> None:
-    # No tools + max_tokens None => not autocomplete-shape => QUALITY still goes
-    # frontier, but the capability-first re-rank must NOT apply. Cheapest wins.
+async def test_quality_notools_coding_is_capability_first() -> None:
+    # C4/§23: the -quality capability re-rank spans the whole agentic-coding axis
+    # — a plain coding turn with NO tools array still routes capability-first, so
+    # -quality never lands on the weakest frontier for coding work. (Pre-C4 this
+    # request stayed cost-first because the re-rank was tool-bearing-only.)
     scout = _scout(_weak_cheap(), _strong_pricey())
     decision = await scout.choose(_req(QUALITY, with_tools=False))
+    assert decision.chosen_model_id == "big-frontier"
+    assert "quality_agentic=capability_first" in decision.rationale
+
+
+async def test_quality_noncoding_stays_cost_first() -> None:
+    # A genuinely non-agentic -quality request (simple_qa) still goes frontier
+    # but stays cost-first: the re-rank is scoped to the coding/tool_use axis, so
+    # categories off that axis keep cheapest-frontier-wins.
+    weak = ModelEntry(
+        model_id="mini-frontier", provider="openai", context_window=200000,
+        cost_per_m_input=0.25, cost_per_m_output=2.0,
+        task_scores={"simple_qa": 0.75},
+    )
+    strong = ModelEntry(
+        model_id="big-frontier", provider="anthropic", context_window=200000,
+        cost_per_m_input=3.0, cost_per_m_output=15.0,
+        task_scores={"simple_qa": 0.90},
+    )
+    scout = CapabilityScout(
+        registry=MultiProviderModelRegistry([weak, strong]),
+        quality_threshold=0.70,
+    )
+    decision = await scout.choose(
+        _req(QUALITY, with_tools=False, text="What is the capital of France?")
+    )
     assert decision.chosen_model_id == "mini-frontier"
     assert "quality_agentic=capability_first" not in decision.rationale
 
