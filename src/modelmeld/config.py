@@ -116,6 +116,27 @@ class GatewaySettings(BaseSettings):
     capability_eligible_providers: list[str] | None = None
     capability_fallback_depth: int = 5
 
+    # ---- Curated registry feed (Pro) ----------------------------------------
+    # When `registry_feed_url` is set, the gateway fetches a continuously
+    # curated, signed ModelRegistry at startup and routes on it instead of the
+    # bundled snapshot (which is frozen at release time). The payload signature
+    # is verified against `registry_feed_public_key_pem`; ANY failure (network,
+    # bad signature, unsupported schema, expired) falls back to the bundled
+    # registry — degraded routing always beats a crashed gateway. The license
+    # key is the JWT issued on Pro activation. New feeds are picked up on
+    # process restart. See modelmeld.scout.feed.RegistryFeedClient.
+    registry_feed_url: str | None = None
+    registry_feed_license_key: str | None = None
+    # PEM-encoded Ed25519 public key that signs the feed. REQUIRED when
+    # `registry_feed_url` is set — the client refuses to fetch a signed feed
+    # with no verifier (a misconfigured URL could otherwise exfiltrate the
+    # license key + accept an attacker's payload as the live registry).
+    registry_feed_public_key_pem: str | None = None
+    # Local cache path for the last good payload (served within TTL with no
+    # network hit). None disables on-disk caching.
+    registry_feed_cache_path: str | None = None
+    registry_feed_cache_ttl_sec: int = 3600
+
     # Completion cache. Off by default in core-engine; enterprise
     # turns it on. When on, the chat route consults an `app.state.completion_cache`
     # before calling the adapter. Hits skip the upstream call entirely.
