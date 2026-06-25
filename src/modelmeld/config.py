@@ -130,7 +130,10 @@ class GatewaySettings(BaseSettings):
     # PEM-encoded Ed25519 public key that signs the feed. REQUIRED when
     # `registry_feed_url` is set — the client refuses to fetch a signed feed
     # with no verifier (a misconfigured URL could otherwise exfiltrate the
-    # license key + accept an attacker's payload as the live registry).
+    # license key + accept an attacker's payload as the live registry). Multiple
+    # concatenated PEM blocks are accepted: pin both the current and next key
+    # during a key rotation (the feed verifies if ANY pinned key matches), then
+    # drop the retired one once the publisher has cut over.
     registry_feed_public_key_pem: str | None = None
     # Local cache path for the last good payload (served within TTL with no
     # network hit). None disables on-disk caching.

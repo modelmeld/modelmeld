@@ -47,6 +47,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -66,6 +67,36 @@ SUPPORTED_SCHEMA_VERSIONS = frozenset({1})
 SIGNATURE_HEADER = "x-feed-signature"
 DEFAULT_TIMEOUT_SEC = 15.0
 DEFAULT_CACHE_TTL_SEC = 3600
+
+_PEM_BLOCK_RE = re.compile(
+    rb"-----BEGIN PUBLIC KEY-----.*?-----END PUBLIC KEY-----", re.DOTALL
+)
+
+
+def _load_ed25519_public_keys(
+    public_key_pem: bytes | str | None,
+) -> list[Ed25519PublicKey]:
+    """Parse one OR MORE Ed25519 public keys from PEM.
+
+    Multiple concatenated PEM blocks are accepted so a deployment can pin both
+    the current and next signing key during a zero-downtime key rotation: the
+    feed is verified if ANY pinned key matches. Returns an empty list when
+    `public_key_pem` is None.
+    """
+    if public_key_pem is None:
+        return []
+    if isinstance(public_key_pem, str):
+        public_key_pem = public_key_pem.encode("utf-8")
+    blocks = _PEM_BLOCK_RE.findall(public_key_pem) or [public_key_pem]
+    keys: list[Ed25519PublicKey] = []
+    for block in blocks:
+        key = load_pem_public_key(block)
+        if not isinstance(key, Ed25519PublicKey):
+            raise ValueError(
+                "public_key_pem must contain only Ed25519 public keys in PEM format"
+            )
+        keys.append(key)
+    return keys
 
 
 # ---------------------------------------------------------------------------
@@ -113,17 +144,13 @@ class RegistryFeedClient:
         self._timeout = timeout_sec
         self._http = http_client
         self._owns_client = http_client is None
-        self._public_key: Ed25519PublicKey | None = None
-        if public_key_pem is not None:
-            if isinstance(public_key_pem, str):
-                public_key_pem = public_key_pem.encode("utf-8")
-            key = load_pem_public_key(public_key_pem)
-            if not isinstance(key, Ed25519PublicKey):
-                raise ValueError(
-                    "public_key_pem must be an Ed25519 public key in PEM format"
-                )
-            self._public_key = key
-        elif feed_url:
+        # One or more pinned Ed25519 public keys. Multiple PEM blocks enable
+        # zero-downtime key rotation: pin old + new together until the publisher
+        # has cut over, then drop the old one.
+        self._public_keys: list[Ed25519PublicKey] = _load_ed25519_public_keys(
+            public_key_pem
+        )
+        if not self._public_keys and feed_url:
             # Refuse to fetch a signed feed without a verifier. Previous
             # behavior was to fetch + log a warning + accept whatever the
             # server returned — a misconfigured deployment could silently
@@ -173,9 +200,9 @@ class RegistryFeedClient:
             return self._fallback_to_seed(reason=f"http_error: {type(e).__name__}: {e}")
 
         # 4. Verify signature. Construction already refused if feed_url was
-        # set without a public key, so self._public_key is guaranteed non-None
+        # set without a public key, so self._public_keys is guaranteed non-empty
         # whenever this code path runs. Defensive check kept for clarity.
-        if self._public_key is None:
+        if not self._public_keys:
             return self._fallback_to_seed(reason="no_public_key_configured")
         try:
             self._verify_signature(body_bytes, signature_b64)
@@ -230,20 +257,26 @@ class RegistryFeedClient:
                 response=response,
             )
         signature_b64 = response.headers.get(SIGNATURE_HEADER)
-        if signature_b64 is None and self._public_key is not None:
+        if signature_b64 is None and self._public_keys:
             raise ValueError(
                 f"feed response missing required {SIGNATURE_HEADER!r} header"
             )
         return response.content, signature_b64 or ""
 
     def _verify_signature(self, body: bytes, signature_b64: str) -> None:
-        """Raises `InvalidSignature` if the signature doesn't match."""
-        assert self._public_key is not None
+        """Raises `InvalidSignature` if no pinned key verifies the signature."""
+        assert self._public_keys
         try:
             signature = base64.b64decode(signature_b64)
         except Exception as e:
             raise InvalidSignature(f"signature not valid base64: {e}") from e
-        self._public_key.verify(signature, body)
+        for key in self._public_keys:
+            try:
+                key.verify(signature, body)
+                return
+            except InvalidSignature:
+                continue
+        raise InvalidSignature("signature did not verify against any pinned key")
 
     def _validate_envelope(self, envelope: Any) -> tuple[bool, str]:
         """Returns (ok, reason). reason populated only on failure."""
