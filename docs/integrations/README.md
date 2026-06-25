@@ -57,6 +57,22 @@ declared role:
 - [CrewAI](crewai.md)
 - [LangGraph](langgraph.md)
 - [OpenClaw](openclaw.md)
+- [MetaGPT](metagpt.md)
+
+These frameworks route LLM calls through [LiteLLM](https://litellm.ai)
+by default, so the [LiteLLM migration guide](litellm.md) is the shared
+spine: point the proxy (or SDK) at the gateway once and every framework
+on top of it routes here.
+
+## Migrating from LiteLLM
+
+Already running a LiteLLM proxy or SDK? ModelMeld is the same
+OpenAI-compatible drop-in plus capability routing, deterministic audit
+headers, and the three policy aliases. You change one `api_base` and
+delete your fallback/router rules.
+
+- [**LiteLLM → ModelMeld**](litellm.md) — before/after `config.yaml`
+  diff, the Python SDK, and how to verify the cutover.
 
 ## Gateway-managed memory (experimental)
 

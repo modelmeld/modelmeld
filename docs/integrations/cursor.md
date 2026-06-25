@@ -22,6 +22,22 @@ In Cursor:
 That's it. Cursor's chat, edit, and agent modes now route through
 ModelMeld.
 
+## Picking a routing policy
+
+Cursor sends the custom model name from step 7 verbatim to the gateway,
+so you can select a ModelMeld policy by using one of the three aliases as
+that name instead of a placeholder:
+
+- `anthropic/modelmeld-saver` — OSS-tier only; a hard cost ceiling.
+- `anthropic/modelmeld-auto` — OSS by default; escalates to frontier on
+  reasoning markers or large context.
+- `anthropic/modelmeld-quality` — frontier-first; downgrades trivial
+  requests to OSS.
+
+The `anthropic/` segment is part of the alias string (not a provider
+selector); type it verbatim. Any other model name still gets capability
+routing, just without a policy ceiling.
+
 ## What Cursor sends us
 
 Cursor's autocomplete and chat have very different request shapes:

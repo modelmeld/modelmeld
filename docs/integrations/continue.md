@@ -53,6 +53,25 @@ This config:
 - Routes **summarize** through the cheap tier too — summarization is
   a known-easy task category.
 
+## Picking a routing policy
+
+Continue's `provider: openai` sends the `model` value verbatim to the
+gateway, so set `model` to one of the three aliases to select a policy
+ceiling for that role:
+
+- `anthropic/modelmeld-saver` — OSS-tier only; a hard cost ceiling.
+- `anthropic/modelmeld-auto` — OSS by default; escalates to frontier on
+  reasoning markers or large context.
+- `anthropic/modelmeld-quality` — frontier-first; downgrades trivial
+  requests to OSS.
+
+For example, give the `chat` role `model: anthropic/modelmeld-auto` and
+the `autocomplete` role `model: anthropic/modelmeld-saver` for a hard
+cheap ceiling on completions. The `anthropic/` segment is part of the
+alias string (not a provider selector); write it verbatim. Any other
+`model` value still gets capability routing, just without a policy
+ceiling.
+
 ## Continue's role-based model assignment
 
 Continue's `roles` field is the cleanest mapping to our routing hints
