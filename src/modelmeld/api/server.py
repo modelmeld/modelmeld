@@ -28,11 +28,57 @@ from modelmeld.metrics import MetricsCollector
 from modelmeld.privacy import Scrubber, build_scrubber
 from modelmeld.router import Router, SingleAdapterRouter, build_router
 from modelmeld.scout import ModelRegistry, Scout, build_scout
+from modelmeld.scout.feed import RegistryFeedClient
 from modelmeld.scout.multi_provider_registry import default_multi_provider_registry
 from modelmeld.scout.session_state import SessionStallStore
 from modelmeld.tokens import TokenCounter, build_token_counter
 
 logger = logging.getLogger(__name__)
+
+
+async def _maybe_load_registry_feed(app: FastAPI) -> None:
+    """Fetch the curated registry feed (if configured) and route on it.
+
+    No-op when `registry_feed_url` is unset. On a successful, signature-verified
+    fetch this swaps `app.state.model_registry` to the live registry and (when
+    the router is gateway-owned) rebuilds the router on it. On ANY failure the
+    client returns the bundled seed — we keep the default registry already wired
+    in `app.state` and never raise. New feeds are picked up on restart.
+    """
+    settings = app.state.settings
+    feed_url = getattr(settings, "registry_feed_url", None)
+    if not feed_url:
+        return
+    client = RegistryFeedClient(
+        feed_url=feed_url,
+        license_key=getattr(settings, "registry_feed_license_key", None),
+        public_key_pem=getattr(settings, "registry_feed_public_key_pem", None),
+        cache_path=getattr(settings, "registry_feed_cache_path", None),
+        cache_ttl_sec=getattr(settings, "registry_feed_cache_ttl_sec", 3600),
+    )
+    try:
+        result = await client.fetch()
+    finally:
+        await client.close()
+    if result.source == "seed":
+        # Network/signature/schema/expiry failure — the client already logged
+        # the reason at WARN. Keep the bundled registry already in app.state.
+        return
+    app.state.model_registry = result.registry
+    # The router captured the prior registry at build time, so rebuild it on the
+    # fetched feed — but only when the gateway owns the router (an injected
+    # router/adapter belongs to the caller).
+    if getattr(app.state, "_router_owned", False):
+        old_router: Router | None = getattr(app.state, "router", None)
+        app.state.router = build_router(
+            settings, app.state.scout, model_registry=result.registry,
+        )
+        if old_router is not None:
+            await old_router.close()
+    logger.info(
+        "registry feed loaded: source=%s feed_version=%s models=%d",
+        result.source, result.feed_version, len(result.registry.all_entries()),
+    )
 
 
 @asynccontextmanager
@@ -56,6 +102,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "provider key such as MODELMELD_OPENROUTER_API_KEY) to enable "
             "real routing. See the README Self-host section.",
         )
+    # Curated registry feed (Pro): fetch + verify the live registry and route
+    # on it. Safe no-op when unconfigured; safe fallback to the bundled seed on
+    # any failure. Runs once at startup (restart-to-reload).
+    await _maybe_load_registry_feed(app)
+
     try:
         yield
     finally:
@@ -160,6 +211,10 @@ def build_app(
     # reads it is gated by MODELMELD_STALL_SHADOW so tests can always reach it.
     app.state.session_stall = SessionStallStore()
 
+    # Track whether WE built the router: only then may the registry-feed
+    # startup hook rebuild it on the fetched registry. An injected router /
+    # adapter is owned by the caller (tests, embedders) — don't touch it.
+    app.state._router_owned = router is None and adapter is None
     if router is not None:
         app.state.router = router
     elif adapter is not None:
