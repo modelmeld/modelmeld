@@ -14,6 +14,15 @@ edits to this file land via PR like anything else and survive
 release-please regenerations as long as they sit above the
 auto-generated section markers.
 
+## [0.19.0](https://github.com/modelmeld/modelmeld/compare/v0.18.0...v0.19.0) (2026-06-25)
+
+
+### Features
+
+* **feed:** accept multiple pinned public keys for zero-downtime key rotation ([#122](https://github.com/modelmeld/modelmeld/issues/122)) ([d78ce45](https://github.com/modelmeld/modelmeld/commit/d78ce451f259f471ced2c00d26726976f7dea805))
+* **scout:** route the agentic-coding axis by the in-house value signal ([#119](https://github.com/modelmeld/modelmeld/issues/119)) ([9d3080a](https://github.com/modelmeld/modelmeld/commit/9d3080aebb538cb1f26f23cdb3b73a44bec4dc81))
+* **server:** fetch the curated registry feed at startup (Pro consumer) ([#121](https://github.com/modelmeld/modelmeld/issues/121)) ([9fc60f3](https://github.com/modelmeld/modelmeld/commit/9fc60f38afd27ed85896a9bb07dd9b9bd750970d))
+
 ## [0.18.0](https://github.com/modelmeld/modelmeld/compare/v0.17.0...v0.18.0) (2026-06-23)
 
 > [!IMPORTANT]
