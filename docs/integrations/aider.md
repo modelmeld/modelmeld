@@ -24,6 +24,25 @@ The `openai/` prefix is LiteLLM's "route this via the OpenAI-compatible
 backend" syntax. The model name after the prefix can be anything — our
 scout decides what actually serves the request.
 
+## Picking a routing policy
+
+To select a policy ceiling (`-saver` / `-auto` / `-quality`) rather than
+default capability routing, set the model to a ModelMeld alias. Because
+Aider routes through LiteLLM and the alias itself contains a slash, the
+prefix parser is the thing to watch:
+
+```bash
+aider --model openai/anthropic/modelmeld-auto
+```
+
+LiteLLM's `openai/<name>` prefix splits on the first slash to detect the
+provider, so confirm the gateway received the full alias and the policy
+resolved before relying on it — see the verification curl and the
+slash-parsing note in the [LiteLLM migration guide](litellm.md). If the
+policy does not resolve, either fall back to a plain model name (default
+capability routing, no policy ceiling) or front Aider with a small
+LiteLLM passthrough using `custom_llm_provider: openai`.
+
 ## Aider-specific config
 
 Aider uses three model slots that map cleanly to our scout's tier system:

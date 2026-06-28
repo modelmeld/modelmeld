@@ -21,6 +21,21 @@ In VS Code:
 Cline will immediately use the gateway. The next message in the chat
 panel routes through ModelMeld.
 
+## Picking a routing policy
+
+Cline sends the **Model ID** field verbatim to the gateway, so set it to
+one of the three aliases to select a policy ceiling:
+
+- `anthropic/modelmeld-saver` — OSS-tier only; a hard cost ceiling.
+- `anthropic/modelmeld-auto` — OSS by default; escalates to frontier on
+  reasoning markers or large context.
+- `anthropic/modelmeld-quality` — frontier-first; downgrades trivial
+  requests to OSS.
+
+The `anthropic/` segment is part of the alias string (not a provider
+selector); enter it verbatim. Any other Model ID still gets capability
+routing, just without a policy ceiling.
+
 ## What Cline sends us
 
 - Very large system prompt (~11K chars) defining Cline's XML tool syntax

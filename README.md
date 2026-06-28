@@ -123,7 +123,14 @@ OpenAI SDK · `anthropic-sdk-python` · `@anthropic-ai/sdk`
 **Should work, not yet live-tested:**
 [Cursor](docs/integrations/cursor.md) ·
 [Cline](docs/integrations/cline.md) ·
-[Continue](docs/integrations/continue.md)
+[Continue](docs/integrations/continue.md) ·
+[MetaGPT](docs/integrations/metagpt.md)
+
+**Migrating from LiteLLM?**
+[LiteLLM → ModelMeld](docs/integrations/litellm.md) is the same
+OpenAI-compatible drop-in, plus capability routing and the three policy
+aliases. Every framework above that sits on LiteLLM routes here once the
+proxy points at the gateway.
 
 Frameworks can declare task category + agent role explicitly via
 `x-modelmeld-task-category` / `x-modelmeld-agent-role` headers — bypasses
